@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  BarChart3, FileText, Printer, Sparkles, ChevronDown, CalendarCheck, Users,
-  BedDouble, Wrench, TrendingDown, HardHat, Landmark,
+  BarChart3, FileText, Printer, Sparkles, CalendarCheck, Users,
+  BedDouble, Wrench, TrendingDown, HardHat, Landmark, Tags, ShoppingBag, Handshake,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -15,9 +15,9 @@ import { TextField } from '@/components/ui/Field';
 import { Badge } from '@/components/ui/Badge';
 import { buildReportData, buildReportHTML, type ReportData } from '@/lib/report';
 import { printHTML } from '@/lib/print';
-import { reservationPaid } from '@/store/selectors';
+import { reservationPaid, salePaid } from '@/store/selectors';
 import { formatDA, formatDate, todayISO, addDaysISO, cn } from '@/lib/utils';
-import { clientName } from '@/lib/lookups';
+import { clientName, roomName } from '@/lib/lookups';
 
 export default function Reports() {
   const { t, lang } = useI18n();
@@ -29,7 +29,7 @@ export default function Reports() {
   const [to, setTo] = useState(todayISO());
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'summary' | 'activity' | 'clients' | 'charges'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'activity' | 'salesPurchases' | 'clients' | 'charges'>('summary');
 
   const generate = () => {
     setLoading(true);
@@ -83,10 +83,11 @@ export default function Reports() {
             {/* Tab navigation */}
             <div className="flex border-b border-white/10 mb-6 overflow-x-auto scrollbar-none gap-2">
               {[
-                { id: 'summary', label: 'Synthèse & Caisse', icon: <FileText size={16} /> },
-                { id: 'activity', label: 'Activité & Appartements', icon: <CalendarCheck size={16} /> },
-                { id: 'clients', label: 'Clients & Services', icon: <Users size={16} /> },
-                { id: 'charges', label: 'Charges & Personnel', icon: <TrendingDown size={16} /> },
+                { id: 'summary', label: t('reports.tabSummary'), icon: <FileText size={16} /> },
+                { id: 'activity', label: t('reports.tabActivity'), icon: <CalendarCheck size={16} /> },
+                { id: 'salesPurchases', label: t('reports.tabSalesPurchases'), icon: <Tags size={16} /> },
+                { id: 'clients', label: t('reports.tabClients'), icon: <Users size={16} /> },
+                { id: 'charges', label: t('reports.tabCharges'), icon: <TrendingDown size={16} /> },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -201,6 +202,78 @@ export default function Reports() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'salesPurchases' && (
+              <div className="space-y-6">
+                {/* KPI strip */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
+                      <Tags size={18} className="text-emerald-300" /> {t('reports.sales')} ({report.sales.count})
+                    </h3>
+                    <div className="space-y-3">
+                      <Stat label={t('sales.totalSales')} value={formatDA(report.sales.totalValue)} dark />
+                      <Stat label={t('reports.salesRevenue')} value={formatDA(report.sales.collected)} tone="success" dark />
+                      <Stat label={t('reports.salesDebts')} value={formatDA(report.sales.debts)} tone={report.sales.debts > 0 ? 'danger' : 'default'} dark />
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
+                      <ShoppingBag size={18} className="text-amber-300" /> {t('reports.purchases')} ({report.purchases.count})
+                    </h3>
+                    <div className="space-y-3">
+                      <Stat label={t('reports.purchasesCost')} value={formatDA(report.purchases.totalCost)} dark />
+                      <Stat label={t('reports.purchasesPaid')} value={formatDA(report.purchases.paid)} tone="success" dark />
+                      <Stat label={t('reports.purchasesRemaining')} value={formatDA(report.purchases.remaining)} tone={report.purchases.remaining > 0 ? 'danger' : 'default'} dark />
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
+                      <Handshake size={18} className="text-sky-300" /> {t('reports.mediators')}
+                    </h3>
+                    <div className="space-y-3">
+                      <Stat label={t('reports.commissionsEarned')} value={formatDA(report.mediators.commissionsEarned)} dark />
+                      <Stat label={t('reports.commissionsPaid')} value={formatDA(report.mediators.commissionsPaid)} tone="success" dark />
+                      <Stat label={t('reports.commissionsOwed')} value={formatDA(report.mediators.commissionsOwed)} tone={report.mediators.commissionsOwed > 0 ? 'danger' : 'default'} dark />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
+                      <Tags size={18} className="text-emerald-300" /> {t('reports.sales')}
+                    </h3>
+                    <ReportTable
+                      head={['Code', t('rooms.title'), t('clients.title'), t('common.total'), t('common.paid')]}
+                      rows={report.sales.list.slice(0, 12).map((s) => [s.code, roomName(data, s.roomId), clientName(data, s.clientId), formatDA(s.price), formatDA(salePaid(s))])}
+                      empty={report.sales.list.length === 0}
+                    />
+                  </div>
+                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
+                      <ShoppingBag size={18} className="text-amber-300" /> {t('reports.purchases')}
+                    </h3>
+                    <ReportTable
+                      head={['Code', t('rooms.title'), t('purchases.seller'), t('purchases.purchasePrice'), t('common.paid')]}
+                      rows={report.purchases.list.slice(0, 12).map((p) => [p.code, roomName(data, p.roomId), clientName(data, p.clientId), formatDA(p.purchasePrice), formatDA(p.payments.reduce((s, x) => s + x.amount, 0))])}
+                      empty={report.purchases.list.length === 0}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
+                    <Handshake size={18} className="text-sky-300" /> {t('reports.mediators')}
+                  </h3>
+                  <ReportTable
+                    head={[t('common.name'), t('mediators.salesCount'), t('reports.commissionsEarned'), t('reports.commissionsOwed')]}
+                    rows={report.mediators.top.map((m) => [m.name, String(m.count), formatDA(m.earned), formatDA(m.owed)])}
+                    empty={report.mediators.top.length === 0}
+                  />
                 </div>
               </div>
             )}

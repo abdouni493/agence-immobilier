@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Landmark, ArrowDownLeft, ArrowUpRight, TrendingUp, TrendingDown, Wallet,
-  ShoppingCart, Wrench, HardHat, Coins, Plus,
+  ShoppingCart, Wrench, HardHat, Coins, Plus, Tags, ShoppingBag, Handshake,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -16,7 +16,7 @@ import { TextField, RadioGroup, SegmentedControl } from '@/components/ui/Field';
 import { AnimatedNumber } from '@/components/ui/AnimatedCounter';
 import { caisseRecap, caisseBalance } from '@/store/selectors';
 import { formatDA, formatDate, todayISO, addDaysISO, monthKey, cn } from '@/lib/utils';
-import { clientName, reservationRoomLabels } from '@/lib/lookups';
+import { clientName, reservationRoomLabels, roomName, mediatorName } from '@/lib/lookups';
 import type { CashType } from '@/types';
 
 type Period = 'today' | 'week' | 'month' | 'custom';
@@ -50,19 +50,51 @@ export default function Caisse() {
   const recap = useMemo(() => caisseRecap(data, from, to), [data, from, to]);
   const balance = useMemo(() => caisseBalance(data), [data]);
 
-  // income items (reservation payments in range)
+  // income items (reservation + sale payments in range)
   const incomeItems = useMemo(() => {
-    const items: { id: string; label: string; sub: string; amount: number; date: string }[] = [];
+    const items: { id: string; label: string; sub: string; amount: number; date: string; kind: 'res' | 'sale' }[] = [];
     for (const r of data.reservations) {
       if (r.status === 'cancelled') continue;
       for (const p of r.payments) {
         if (p.date >= from && p.date <= to) {
-          items.push({ id: p.id, label: clientName(data, r.clientId), sub: `${r.code} · ${reservationRoomLabels(data, r)}`, amount: p.amount, date: p.date });
+          items.push({ id: p.id, label: clientName(data, r.clientId), sub: `${r.code} · ${reservationRoomLabels(data, r)}`, amount: p.amount, date: p.date, kind: 'res' });
+        }
+      }
+    }
+    for (const s of data.sales) {
+      for (const p of s.payments) {
+        if (p.date >= from && p.date <= to) {
+          items.push({ id: p.id, label: clientName(data, s.clientId), sub: `${s.code} · ${roomName(data, s.roomId)}`, amount: p.amount, date: p.date, kind: 'sale' });
         }
       }
     }
     return items.sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [data, from, to]);
+
+  // outgoing items (purchase payments to sellers + mediator commissions in range)
+  const purchaseItems = useMemo(() => {
+    const items: { id: string; label: string; sub: string; amount: number; date: string }[] = [];
+    for (const pu of data.purchases) {
+      for (const p of pu.payments) {
+        if (p.date >= from && p.date <= to) {
+          items.push({ id: p.id, label: clientName(data, pu.clientId), sub: `${pu.code} · ${roomName(data, pu.roomId)}`, amount: p.amount, date: p.date });
+        }
+      }
+    }
+    return items.sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [data, from, to]);
+
+  const mediatorItems = useMemo(() => {
+    const items: { id: string; label: string; sub: string; amount: number; date: string }[] = [];
+    for (const m of data.mediators) {
+      for (const p of m.payments) {
+        if (p.date >= from && p.date <= to) {
+          items.push({ id: p.id, label: mediatorName(data, m.id), sub: p.note ?? t('caisse.mediatorsOut'), amount: p.amount, date: p.date });
+        }
+      }
+    }
+    return items.sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [data, from, to, t]);
 
   const manualTx = useMemo(
     () => data.cashTransactions.filter((tx) => tx.date >= from && tx.date <= to),
@@ -149,7 +181,7 @@ export default function Caisse() {
             {incomeItems.length === 0 ? <Empty /> : (
               <div className="space-y-2 max-h-72 overflow-y-auto">
                 {incomeItems.map((it) => (
-                  <Row key={it.id} label={it.label} sub={it.sub} date={formatDate(it.date, lang)} amount={it.amount} positive />
+                  <Row key={it.id} label={it.label} sub={it.sub} date={formatDate(it.date, lang)} amount={it.amount} positive tag={it.kind === 'sale' ? t('nav.ventes') : undefined} />
                 ))}
               </div>
             )}
@@ -164,10 +196,44 @@ export default function Caisse() {
             <div className="space-y-3">
               <CatLine icon={<ShoppingCart size={15} />} label={t('caisse.generalExpenses')} total={recap.generalExpenses} breakdown={recap.generalByCategory} />
               <CatLine icon={<Wrench size={15} />} label={t('caisse.maintenances')} total={recap.maintenances} breakdown={recap.maintenanceByRoom} />
+              <CatLine icon={<ShoppingBag size={15} />} label={t('caisse.purchasesOut')} total={recap.purchaseOut} breakdown={recap.purchaseByCode} />
+              <CatLine icon={<Handshake size={15} />} label={t('caisse.mediatorsOut')} total={recap.mediatorOut} breakdown={recap.mediatorByName} />
               <SimpleLine icon={<HardHat size={15} />} label={t('caisse.salaries')} total={recap.salaries} />
               <SimpleLine icon={<Coins size={15} />} label={t('caisse.advances')} total={recap.advances} />
             </div>
           </SectionCard>
+
+          {/* Mediator commission payments detail */}
+          {mediatorItems.length > 0 && (
+            <SectionCard
+              dark
+              style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+              title={t('caisse.mediatorsOut')}
+              icon={<Handshake size={18} />}
+            >
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {mediatorItems.map((it) => (
+                  <Row key={it.id} label={it.label} sub={it.sub} date={formatDate(it.date, lang)} amount={it.amount} />
+                ))}
+              </div>
+            </SectionCard>
+          )}
+
+          {/* Purchase payouts detail */}
+          {purchaseItems.length > 0 && (
+            <SectionCard
+              dark
+              style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+              title={t('caisse.purchasesOut')}
+              icon={<ShoppingBag size={18} />}
+            >
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {purchaseItems.map((it) => (
+                  <Row key={it.id} label={it.label} sub={it.sub} date={formatDate(it.date, lang)} amount={it.amount} tag={t('nav.achats')} />
+                ))}
+              </div>
+            </SectionCard>
+          )}
 
           <SectionCard
             dark
@@ -197,6 +263,7 @@ export default function Caisse() {
             </div>
             <div className="p-5 space-y-2.5 text-sm">
               <RecapLine label={t('caisse.reservationsIncome')} value={recap.reservationIncome} positive />
+              <RecapLine label={t('caisse.salesIncome')} value={recap.saleIncome} positive />
               <RecapLine label={t('caisse.manualDeposits')} value={recap.manualDeposits} positive />
               <div className="border-t border-white/10 pt-2.5 flex justify-between font-bold text-emerald-300">
                 <span>{t('caisse.totalIn')}</span><span>+{formatDA(recap.totalIn)}</span>
@@ -205,6 +272,8 @@ export default function Caisse() {
               <div className="pt-2 space-y-2.5">
                 <RecapLine label={t('caisse.generalExpenses')} value={recap.generalExpenses} negative />
                 <RecapLine label={t('caisse.maintenances')} value={recap.maintenances} negative />
+                <RecapLine label={t('caisse.purchasesOut')} value={recap.purchaseOut} negative />
+                <RecapLine label={t('caisse.mediatorsOut')} value={recap.mediatorOut} negative />
                 <RecapLine label={t('caisse.salaries')} value={recap.salaries} negative />
                 <RecapLine label={t('caisse.advances')} value={recap.advances} negative />
                 <RecapLine label={t('caisse.manualWithdrawals')} value={recap.manualWithdrawals} negative />
@@ -235,11 +304,14 @@ function Empty() {
   return <p className="text-sm text-sky-200/60 text-center py-6">{t('common.noData')}</p>;
 }
 
-function Row({ label, sub, date, amount, positive }: { label: string; sub: string; date: string; amount: number; positive?: boolean }) {
+function Row({ label, sub, date, amount, positive, tag }: { label: string; sub: string; date: string; amount: number; positive?: boolean; tag?: string }) {
   return (
     <div className="flex items-center justify-between gap-2 rounded-xl bg-white/10 border border-white/10 px-4 py-2.5">
       <div className="min-w-0">
-        <p className="text-sm font-medium text-white truncate">{label}</p>
+        <p className="text-sm font-medium text-white truncate flex items-center gap-1.5">
+          {label}
+          {tag && <span className="text-[9px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-white/15 text-sky-200 shrink-0">{tag}</span>}
+        </p>
         <p className="text-xs text-sky-200/80 truncate">{sub} · {date}</p>
       </div>
       <span className={cn('text-sm font-bold shrink-0', positive ? 'text-emerald-350 text-emerald-300' : 'text-rose-350 text-rose-300')}>

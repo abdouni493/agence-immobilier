@@ -1,4 +1,4 @@
-import type { Reservation, Room, Worker } from '@/types';
+import type { Reservation, Room, Worker, Sale, Purchase, Mediator } from '@/types';
 import type { AppData } from '@/data/seed';
 import { nightsBetween, rangesOverlap, monthKey } from '@/lib/utils';
 
@@ -33,6 +33,92 @@ export function reservationPaid(r: Reservation): number {
 export function reservationRemaining(r: Reservation): number {
   if (r.status === 'cancelled') return 0;
   return Math.max(0, r.total - reservationPaid(r));
+}
+
+// -------- Sales / Purchases / Mediators --------
+
+export function salePaid(s: Sale): number {
+  return s.payments.reduce((sum, p) => sum + p.amount, 0);
+}
+
+export function saleRemaining(s: Sale): number {
+  return Math.max(0, s.price - salePaid(s));
+}
+
+export function purchasePaid(p: Purchase): number {
+  return p.payments.reduce((sum, x) => sum + x.amount, 0);
+}
+
+export function purchaseRemaining(p: Purchase): number {
+  return Math.max(0, p.purchasePrice - purchasePaid(p));
+}
+
+/** Total commission a mediator has earned across all sales. */
+export function mediatorCommissionEarned(mediatorId: string, sales: Sale[]): number {
+  return sales
+    .filter((s) => s.mediatorId === mediatorId)
+    .reduce((sum, s) => sum + s.mediatorCommission, 0);
+}
+
+export function mediatorPaid(m: Mediator): number {
+  return m.payments.reduce((sum, p) => sum + p.amount, 0);
+}
+
+/** What the agency still owes this mediator. */
+export function mediatorRemaining(m: Mediator, sales: Sale[]): number {
+  return Math.max(0, mediatorCommissionEarned(m.id, sales) - mediatorPaid(m));
+}
+
+export interface MediatorStats {
+  salesCount: number;
+  commissionEarned: number;
+  paid: number;
+  remaining: number;
+}
+
+export function mediatorStats(m: Mediator, sales: Sale[]): MediatorStats {
+  const list = sales.filter((s) => s.mediatorId === m.id);
+  const commissionEarned = list.reduce((sum, s) => sum + s.mediatorCommission, 0);
+  const paid = mediatorPaid(m);
+  return {
+    salesCount: list.length,
+    commissionEarned,
+    paid,
+    remaining: Math.max(0, commissionEarned - paid),
+  };
+}
+
+/** Sum of sale payments whose payment date falls inside [from,to]. */
+export function saleIncomeInRange(sales: Sale[], from: string, to: string): number {
+  let total = 0;
+  for (const s of sales) {
+    for (const p of s.payments) {
+      if (p.date >= from && p.date <= to) total += p.amount;
+    }
+  }
+  return total;
+}
+
+/** Sum of purchase payments (money OUT to sellers) inside [from,to]. */
+export function purchaseOutInRange(purchases: Purchase[], from: string, to: string): number {
+  let total = 0;
+  for (const pu of purchases) {
+    for (const p of pu.payments) {
+      if (p.date >= from && p.date <= to) total += p.amount;
+    }
+  }
+  return total;
+}
+
+/** Sum of mediator commission payments (money OUT) inside [from,to]. */
+export function mediatorOutInRange(mediators: Mediator[], from: string, to: string): number {
+  let total = 0;
+  for (const m of mediators) {
+    for (const p of m.payments) {
+      if (p.date >= from && p.date <= to) total += p.amount;
+    }
+  }
+  return total;
 }
 
 /** Live room status: maintenance flag wins, else occupied if an active reservation covers `today`. */
@@ -110,6 +196,7 @@ export function reservationIncomeInRange(
 
 export interface CaisseRecap {
   reservationIncome: number;
+  saleIncome: number;
   manualDeposits: number;
   totalIn: number;
   generalExpenses: number;
@@ -118,6 +205,10 @@ export interface CaisseRecap {
   maintenanceByRoom: { name: string; total: number }[];
   salaries: number;
   advances: number;
+  purchaseOut: number;
+  purchaseByCode: { name: string; total: number }[];
+  mediatorOut: number;
+  mediatorByName: { name: string; total: number }[];
   manualWithdrawals: number;
   totalOut: number;
   net: number;
@@ -125,6 +216,32 @@ export interface CaisseRecap {
 
 export function caisseRecap(data: AppData, from: string, to: string): CaisseRecap {
   const reservationIncome = reservationIncomeInRange(data.reservations, from, to);
+  const saleIncome = saleIncomeInRange(data.sales, from, to);
+
+  // purchases: money out to sellers, broken down per purchase code
+  const purchaseMap = new Map<string, number>();
+  let purchaseOut = 0;
+  for (const pu of data.purchases) {
+    for (const p of pu.payments) {
+      if (!inRange(p.date, from, to)) continue;
+      purchaseOut += p.amount;
+      purchaseMap.set(pu.code, (purchaseMap.get(pu.code) ?? 0) + p.amount);
+    }
+  }
+  const purchaseByCode = [...purchaseMap.entries()].map(([name, total]) => ({ name, total }));
+
+  // mediators: commissions paid out, broken down per mediator
+  const mediatorMap = new Map<string, number>();
+  let mediatorOut = 0;
+  for (const m of data.mediators) {
+    for (const p of m.payments) {
+      if (!inRange(p.date, from, to)) continue;
+      mediatorOut += p.amount;
+      const name = `${m.firstName} ${m.lastName}`;
+      mediatorMap.set(name, (mediatorMap.get(name) ?? 0) + p.amount);
+    }
+  }
+  const mediatorByName = [...mediatorMap.entries()].map(([name, total]) => ({ name, total }));
 
   const manualDeposits = data.cashTransactions
     .filter((t) => t.type === 'deposit' && inRange(t.date, from, to))
@@ -166,10 +283,12 @@ export function caisseRecap(data: AppData, from: string, to: string): CaisseReca
     for (const a of w.advances) if (inRange(a.date, from, to)) advances += a.amount;
   }
 
-  const totalIn = reservationIncome + manualDeposits;
-  const totalOut = generalExpenses + maintenances + salaries + advances + manualWithdrawals;
+  const totalIn = reservationIncome + saleIncome + manualDeposits;
+  const totalOut =
+    generalExpenses + maintenances + salaries + advances + purchaseOut + mediatorOut + manualWithdrawals;
   return {
     reservationIncome,
+    saleIncome,
     manualDeposits,
     totalIn,
     generalExpenses,
@@ -178,6 +297,10 @@ export function caisseRecap(data: AppData, from: string, to: string): CaisseReca
     maintenanceByRoom,
     salaries,
     advances,
+    purchaseOut,
+    purchaseByCode,
+    mediatorOut,
+    mediatorByName,
     manualWithdrawals,
     totalOut,
     net: totalIn - totalOut,
@@ -213,12 +336,18 @@ export function computeKpis(data: AppData, today: string): Kpis {
   const monthStart = `${mKey}-01`;
   const monthEnd = `${mKey}-31`;
 
-  const monthRevenue = reservationIncomeInRange(data.reservations, monthStart, monthEnd);
+  const monthRevenue =
+    reservationIncomeInRange(data.reservations, monthStart, monthEnd) +
+    saleIncomeInRange(data.sales, monthStart, monthEnd);
   const monthExpenses =
     data.expenses.filter((e) => e.date >= monthStart && e.date <= monthEnd).reduce((s, e) => s + e.amount, 0) +
-    data.maintenances.filter((m) => m.date >= monthStart && m.date <= monthEnd).reduce((s, m) => s + m.cost, 0);
+    data.maintenances.filter((m) => m.date >= monthStart && m.date <= monthEnd).reduce((s, m) => s + m.cost, 0) +
+    purchaseOutInRange(data.purchases, monthStart, monthEnd) +
+    mediatorOutInRange(data.mediators, monthStart, monthEnd);
 
-  const clientDebts = data.reservations.reduce((s, r) => s + reservationRemaining(r), 0);
+  const clientDebts =
+    data.reservations.reduce((s, r) => s + reservationRemaining(r), 0) +
+    data.sales.reduce((s, v) => s + saleRemaining(v), 0);
 
   const statuses = data.rooms.map((r) => effectiveRoomStatus(r, data.reservations, today));
   const roomsTotal = data.rooms.length;

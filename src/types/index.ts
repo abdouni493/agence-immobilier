@@ -17,9 +17,12 @@ export interface User {
 export type ModuleKey =
   | 'dashboard'
   | 'reservations'
+  | 'ventes'
+  | 'achats'
   | 'chambres'
   | 'services'
   | 'clients'
+  | 'mediators'
   | 'workers'
   | 'expenses'
   | 'caisse'
@@ -58,6 +61,7 @@ export interface Client {
 
 // ============ ROOMS ============
 export type RoomStatus = 'available' | 'occupied' | 'maintenance';
+export type PropertyType = 'rental' | 'sale';
 
 export interface Floor {
   id: string;
@@ -72,12 +76,21 @@ export interface Category {
 export interface Room {
   id: string;
   name: string; // e.g. "203"
-  capacity: number;
+  capacity: number; // nombre de chambres
   floorId: string;
   categoryId: string;
   pricePerNight: number;
   status: RoomStatus;
   maintenanceNote?: string;
+  // Fiche appartement (agence immobilière)
+  wilaya?: string;
+  commune?: string;
+  secteur?: string;
+  description?: string;
+  propertyType?: PropertyType; // location (rental) ou vente (sale)
+  ownerClientId?: string; // client qui a confié / vendu cet appartement à l'agence
+  salePrice?: number; // prix de vente affiché
+  purchasePrice?: number; // prix d'achat par l'agence
 }
 
 export interface Maintenance {
@@ -134,6 +147,67 @@ export interface Reservation {
   status: ReservationStatus;
   createdAt: string;
   notes?: string; // client-provided description/remarque
+}
+
+// ============ MEDIATORS ============
+export interface MediatorPayment {
+  id: string;
+  amount: number;
+  date: string;
+  note?: string;
+}
+
+export interface Mediator {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  phone2?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  cin?: string;
+  notes?: string;
+  payments: MediatorPayment[];
+  createdAt: string;
+}
+
+// ============ SALES (VENTES) ============
+export type SaleStatus = 'paid' | 'debt';
+export type CommissionType = 'amount' | 'percent';
+
+export interface Sale {
+  id: string;
+  code: string; // VEN-001
+  roomId: string; // appartement vendu
+  clientId: string; // acheteur
+  mediatorId?: string;
+  commissionType: CommissionType;
+  commissionPercent?: number; // si commissionType === 'percent'
+  mediatorCommission: number; // montant final en DA
+  price: number; // prix de vente
+  date: string; // ISO date
+  time: string; // HH:MM
+  payments: Payment[];
+  status: SaleStatus;
+  notes?: string;
+  createdAt: string;
+}
+
+// ============ PURCHASES (ACHATS) ============
+export interface Purchase {
+  id: string;
+  code: string; // ACH-001
+  roomId: string; // appartement acquis
+  clientId: string; // vendeur (client qui vend à l'agence)
+  purchasePrice: number; // prix payé par l'agence
+  salePrice: number; // prix de revente prévu
+  date: string; // ISO date
+  time: string; // HH:MM
+  payments: Payment[]; // paiements de l'agence au vendeur
+  status: SaleStatus;
+  notes?: string;
+  createdAt: string;
 }
 
 // ============ WORKERS ============

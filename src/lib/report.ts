@@ -1,12 +1,16 @@
 import type { AppData } from '@/data/seed';
-import type { Reservation, Maintenance, StoreInfo } from '@/types';
+import type { Reservation, Sale, Purchase, Maintenance, StoreInfo } from '@/types';
 import {
   reservationIncomeInRange, reservationPaid, reservationRemaining, caisseRecap,
-  occupancyByFloor, nightsSoldByRoom, type CaisseRecap,
+  occupancyByFloor, nightsSoldByRoom,
+  salePaid, saleRemaining, saleIncomeInRange,
+  purchasePaid, purchaseRemaining, purchaseOutInRange,
+  mediatorStats, mediatorOutInRange,
+  type CaisseRecap,
 } from '@/store/selectors';
 import { nightsBetween } from './utils';
 import { formatDA, formatDate, todayISO } from './utils';
-import { clientName, roomName, serviceName, expenseCategoryName } from './lookups';
+import { clientName, roomName, serviceName, expenseCategoryName, mediatorName } from './lookups';
 
 export interface ReportData {
   totalRevenue: number;
@@ -38,6 +42,27 @@ export interface ReportData {
   expensesDetail: { byCategory: { name: string; total: number }[]; total: number };
   staff: { payments: { name: string; total: number }[]; advances: number; absences: number };
   caisse: CaisseRecap;
+  sales: {
+    count: number;
+    totalValue: number;
+    collected: number;
+    debts: number;
+    list: Sale[];
+  };
+  purchases: {
+    count: number;
+    totalCost: number;
+    paid: number;
+    remaining: number;
+    plannedMargin: number;
+    list: Purchase[];
+  };
+  mediators: {
+    commissionsEarned: number;
+    commissionsPaid: number;
+    commissionsOwed: number;
+    top: { name: string; count: number; earned: number; owed: number }[];
+  };
 }
 
 function inRange(iso: string, from: string, to: string) {
@@ -48,9 +73,11 @@ export function buildReportData(data: AppData, from: string, to: string): Report
   const periodRes = data.reservations.filter((r) => inRange(r.checkIn, from, to));
   const validRes = periodRes.filter((r) => r.status !== 'cancelled');
 
-  const totalRevenue = reservationIncomeInRange(data.reservations, from, to);
   const recap = caisseRecap(data, from, to);
-  const totalExpenses = recap.generalExpenses + recap.maintenances + recap.salaries + recap.advances;
+  const totalRevenue = reservationIncomeInRange(data.reservations, from, to) + recap.saleIncome;
+  const totalExpenses =
+    recap.generalExpenses + recap.maintenances + recap.salaries + recap.advances +
+    recap.purchaseOut + recap.mediatorOut;
 
   // reservations breakdown
   const paid = periodRes.filter((r) => r.status === 'paid' || r.status === 'active').length;
@@ -126,6 +153,34 @@ export function buildReportData(data: AppData, from: string, to: string): Report
   const occ = occupancyByFloor(data, todayISO());
   const avgOccupancy = occ.length ? Math.round(occ.reduce((s, o) => s + o.rate, 0) / occ.length) : 0;
 
+  // ── Sales in period (by sale date) ──
+  const salesList = data.sales.filter((s) => inRange(s.date, from, to));
+  const salesTotalValue = salesList.reduce((sum, s) => sum + s.price, 0);
+  const salesCollected = saleIncomeInRange(data.sales, from, to);
+  const salesDebts = salesList.reduce((sum, s) => sum + saleRemaining(s), 0);
+
+  // ── Purchases in period (by purchase date) ──
+  const purchasesList = data.purchases.filter((p) => inRange(p.date, from, to));
+  const purchasesTotalCost = purchasesList.reduce((sum, p) => sum + p.purchasePrice, 0);
+  const purchasesPaid = purchaseOutInRange(data.purchases, from, to);
+  const purchasesRemaining = purchasesList.reduce((sum, p) => sum + purchaseRemaining(p), 0);
+  const plannedMargin = purchasesList.reduce((sum, p) => sum + (p.salePrice - p.purchasePrice), 0);
+
+  // ── Mediators (all-time situation + commissions paid in period) ──
+  let commissionsEarned = 0;
+  let commissionsOwed = 0;
+  const mediatorTop = data.mediators
+    .map((m) => {
+      const st = mediatorStats(m, data.sales);
+      commissionsEarned += st.commissionEarned;
+      commissionsOwed += st.remaining;
+      return { name: `${m.firstName} ${m.lastName}`, count: st.salesCount, earned: st.commissionEarned, owed: st.remaining };
+    })
+    .filter((m) => m.count > 0 || m.earned > 0)
+    .sort((a, b) => b.earned - a.earned)
+    .slice(0, 6);
+  const commissionsPaid = mediatorOutInRange(data.mediators, from, to);
+
   return {
     totalRevenue,
     totalExpenses,
@@ -141,6 +196,27 @@ export function buildReportData(data: AppData, from: string, to: string): Report
     expensesDetail: { byCategory, total: expTotal },
     staff: { payments: payMap, advances, absences },
     caisse: recap,
+    sales: {
+      count: salesList.length,
+      totalValue: salesTotalValue,
+      collected: salesCollected,
+      debts: salesDebts,
+      list: salesList,
+    },
+    purchases: {
+      count: purchasesList.length,
+      totalCost: purchasesTotalCost,
+      paid: purchasesPaid,
+      remaining: purchasesRemaining,
+      plannedMargin,
+      list: purchasesList,
+    },
+    mediators: {
+      commissionsEarned,
+      commissionsPaid,
+      commissionsOwed,
+      top: mediatorTop,
+    },
   };
 }
 
@@ -173,32 +249,63 @@ export function buildReportHTML(data: AppData, rep: ReportData, store: StoreInfo
     <p style="margin-bottom:8px">Payées: ${rep.reservations.paid} · Dettes: ${rep.reservations.debt} · Annulées: ${rep.reservations.cancelled}</p>
     <table><thead><tr><th>Code</th><th>Client</th><th>Arrivée</th><th class="right">Nuits</th><th class="right">Total</th><th class="right">Payé</th></tr></thead><tbody>${resRows}</tbody></table>
 
-    <div class="title"><h2>3. Clients</h2></div>
+    <div class="title"><h2>3. Ventes (${rep.sales.count})</h2></div>
+    <div class="totals" style="width:100%">
+      ${row('Valeur totale des ventes', formatDA(rep.sales.totalValue))}
+      ${row('Encaissé sur la période', formatDA(rep.sales.collected))}
+      ${row('Dettes ventes', formatDA(rep.sales.debts))}
+    </div>
+    <table><thead><tr><th>Code</th><th>Appartement</th><th>Acheteur</th><th class="right">Prix</th><th class="right">Payé</th></tr></thead><tbody>
+      ${rep.sales.list.slice(0, 30).map((s) => `<tr><td>${s.code}</td><td>${roomName(data, s.roomId)}</td><td>${clientName(data, s.clientId)}</td><td class="right">${formatDA(s.price)}</td><td class="right">${formatDA(salePaid(s))}</td></tr>`).join('') || '<tr><td colspan="5">—</td></tr>'}
+    </tbody></table>
+
+    <div class="title"><h2>4. Achats (${rep.purchases.count})</h2></div>
+    <div class="totals" style="width:100%">
+      ${row('Coût total des achats', formatDA(rep.purchases.totalCost))}
+      ${row('Payé aux vendeurs', formatDA(rep.purchases.paid))}
+      ${row('Reste dû aux vendeurs', formatDA(rep.purchases.remaining))}
+      ${row('Marge prévue (revente)', formatDA(rep.purchases.plannedMargin))}
+    </div>
+    <table><thead><tr><th>Code</th><th>Appartement</th><th>Vendeur</th><th class="right">Prix achat</th><th class="right">Payé</th></tr></thead><tbody>
+      ${rep.purchases.list.slice(0, 30).map((p) => `<tr><td>${p.code}</td><td>${roomName(data, p.roomId)}</td><td>${clientName(data, p.clientId)}</td><td class="right">${formatDA(p.purchasePrice)}</td><td class="right">${formatDA(purchasePaid(p))}</td></tr>`).join('') || '<tr><td colspan="5">—</td></tr>'}
+    </tbody></table>
+
+    <div class="title"><h2>5. Médiateurs</h2></div>
+    <div class="totals" style="width:100%">
+      ${row('Commissions générées', formatDA(rep.mediators.commissionsEarned))}
+      ${row('Commissions payées (période)', formatDA(rep.mediators.commissionsPaid))}
+      ${row('Commissions dues', formatDA(rep.mediators.commissionsOwed))}
+    </div>
+    <table><thead><tr><th>Médiateur</th><th class="right">Ventes</th><th class="right">Gagné</th><th class="right">Dû</th></tr></thead><tbody>
+      ${rep.mediators.top.map((m) => `<tr><td>${m.name}</td><td class="right">${m.count}</td><td class="right">${formatDA(m.earned)}</td><td class="right">${formatDA(m.owed)}</td></tr>`).join('') || '<tr><td colspan="4">—</td></tr>'}
+    </tbody></table>
+
+    <div class="title"><h2>6. Clients</h2></div>
     <p>Nouveaux clients: ${rep.clients.newCount} · Dettes en cours: ${formatDA(rep.clients.totalDebt)}</p>
     <table><thead><tr><th>Top clients</th><th class="right">Chiffre d'affaires</th></tr></thead><tbody>
       ${rep.clients.top.map((c) => `<tr><td>${c.name}</td><td class="right">${formatDA(c.total)}</td></tr>`).join('')}
     </tbody></table>
 
-    <div class="title"><h2>4. Chambres</h2></div>
-    <p>Chambre la plus rentable: ${rep.rooms.mostProfitable ? `${rep.rooms.mostProfitable.name} (${formatDA(rep.rooms.mostProfitable.revenue)})` : '—'} · Maintenances: ${formatDA(rep.rooms.maintTotal)}</p>
+    <div class="title"><h2>7. Appartements</h2></div>
+    <p>Appartement le plus rentable: ${rep.rooms.mostProfitable ? `${rep.rooms.mostProfitable.name} (${formatDA(rep.rooms.mostProfitable.revenue)})` : '—'} · Maintenances: ${formatDA(rep.rooms.maintTotal)}</p>
 
-    <div class="title"><h2>5. Services</h2></div>
+    <div class="title"><h2>8. Services</h2></div>
     <table><thead><tr><th>Service</th><th class="right">Quantité</th><th class="right">CA</th></tr></thead><tbody>
       ${rep.services.sold.map((s) => `<tr><td>${s.name}</td><td class="right">${s.qty}</td><td class="right">${formatDA(s.revenue)}</td></tr>`).join('') || '<tr><td colspan="3">—</td></tr>'}
     </tbody></table>
 
-    <div class="title"><h2>6. Dépenses (${formatDA(rep.expensesDetail.total)})</h2></div>
+    <div class="title"><h2>9. Dépenses (${formatDA(rep.expensesDetail.total)})</h2></div>
     <table><thead><tr><th>Catégorie</th><th class="right">Montant</th></tr></thead><tbody>
       ${rep.expensesDetail.byCategory.map((c) => `<tr><td>${c.name}</td><td class="right">${formatDA(c.total)}</td></tr>`).join('')}
     </tbody></table>
 
-    <div class="title"><h2>7. Personnel</h2></div>
+    <div class="title"><h2>10. Personnel</h2></div>
     <table><thead><tr><th>Travailleur</th><th class="right">Payé</th></tr></thead><tbody>
       ${rep.staff.payments.map((p) => `<tr><td>${p.name}</td><td class="right">${formatDA(p.total)}</td></tr>`).join('') || '<tr><td colspan="2">—</td></tr>'}
     </tbody></table>
     <p>Acomptes accordés: ${formatDA(rep.staff.advances)} · Absences: ${rep.staff.absences}</p>
 
-    <div class="title"><h2>8. Caisse</h2></div>
+    <div class="title"><h2>11. Caisse</h2></div>
     <div class="totals" style="width:100%">
       ${row('Total entrées', formatDA(rep.caisse.totalIn))}
       ${row('Total sorties', formatDA(rep.caisse.totalOut))}

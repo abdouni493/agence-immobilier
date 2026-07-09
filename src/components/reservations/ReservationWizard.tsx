@@ -269,6 +269,25 @@ export function ReservationWizard({
   const [amountPaid,  setAmountPaid]  = useState('');
   const [notes,       setNotes]       = useState(editing?.notes ?? '');
 
+  // Option: hide apartments that are still tied to an active/upcoming
+  // reservation (checkout in the future). They reappear once that reservation
+  // expires. The currently-selected apartments always stay visible.
+  const [hideBusy, setHideBusy] = useState(false);
+  const busyRoomIds = useMemo(() => {
+    const today = todayISO();
+    const busy = new Set<string>();
+    for (const r of data.reservations) {
+      if (r.id === editing?.id || r.status === 'cancelled') continue;
+      if (r.checkOut > today) r.rooms.forEach((rr) => busy.add(rr.roomId));
+    }
+    return busy;
+  }, [data.reservations, editing]);
+
+  const visibleRooms = useMemo(() => {
+    if (!hideBusy) return data.rooms;
+    return data.rooms.filter((r) => !busyRoomIds.has(r.id) || roomIds.includes(r.id) || r.id === calendarRoomId);
+  }, [hideBusy, data.rooms, busyRoomIds, roomIds, calendarRoomId]);
+
   // Sync calendarRoomId and roomIds if empty but rooms are loaded
   useEffect(() => {
     if (data.rooms.length > 0) {
@@ -549,11 +568,27 @@ export function ReservationWizard({
                       <div className="space-y-5">
                         {/* Apartment selector */}
                         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                          <p className="text-xs font-bold text-ink-muted uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                            <Building2 size={12} /> Appartement(s)
-                          </p>
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <p className="text-xs font-bold text-ink-muted uppercase tracking-wide flex items-center gap-1.5">
+                              <Building2 size={12} /> Appartement(s)
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setHideBusy(v => !v)}
+                              title={t('apt.hideBusyHint')}
+                              className={cn(
+                                'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all',
+                                hideBusy ? 'bg-brand-600 text-white shadow-glow' : 'bg-slate-100 text-ink-secondary hover:bg-slate-200',
+                              )}
+                            >
+                              <span className={cn('h-3.5 w-3.5 rounded border flex items-center justify-center', hideBusy ? 'bg-white/20 border-white/40' : 'border-slate-300')}>
+                                {hideBusy && <Check size={9} className="text-white" strokeWidth={3} />}
+                              </span>
+                              {t('apt.hideBusy')}
+                            </button>
+                          </div>
                           <div className="flex flex-wrap gap-2 mb-3">
-                            {data.rooms.map(r => {
+                            {visibleRooms.map(r => {
                               const isMaint = r.status === 'maintenance';
                               return (
                                 <button
@@ -574,10 +609,10 @@ export function ReservationWizard({
                               );
                             })}
                           </div>
-                          {data.rooms.length > 1 && (
+                          {visibleRooms.length > 1 && (
                             <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
                               <p className="w-full text-[10px] text-ink-muted mb-1">Sélection multiple :</p>
-                              {data.rooms.map(r => {
+                              {visibleRooms.map(r => {
                                 const sel = roomIds.includes(r.id);
                                 const isMaint = r.status === 'maintenance';
                                 return (

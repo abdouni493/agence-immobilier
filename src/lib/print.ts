@@ -1,8 +1,11 @@
 import type { AppData } from '@/data/seed';
-import type { Reservation, StoreInfo } from '@/types';
-import { reservationPaid, reservationRemaining } from '@/store/selectors';
+import type { Reservation, Sale, Purchase, Mediator, Payment, Client, StoreInfo } from '@/types';
+import {
+  reservationPaid, reservationRemaining, salePaid, saleRemaining,
+  purchasePaid, purchaseRemaining, mediatorStats,
+} from '@/store/selectors';
 import { formatDA, formatDate, nightsBetween } from './utils';
-import { clientById, serviceName } from './lookups';
+import { clientById, serviceName, mediatorName } from './lookups';
 
 export const PRINT_STYLES = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -195,4 +198,314 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
 
     <div class="foot">Document généré par ${store.name}${store.phone ? ` — ${store.phone}` : ''} — Merci de votre confiance.</div>
   </div>`;
+}
+
+// ─── Shared building blocks for the new documents ───────────────────────────
+
+function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: string): string {
+  const logoHtml = store.logo
+    ? `<img src="${store.logo}" alt="logo" />`
+    : `<div class="logo-placeholder">${store.name.charAt(0)}</div>`;
+  const legalItems = [
+    store.nif && `<span><strong>NIF:</strong> ${store.nif}</span>`,
+    store.nis && `<span><strong>NIS:</strong> ${store.nis}</span>`,
+    store.rc && `<span><strong>RC:</strong> ${store.rc}</span>`,
+    store.article && `<span><strong>Art:</strong> ${store.article}</span>`,
+  ].filter(Boolean).join('');
+  return `
+    <div class="head">
+      <div class="logo-wrap">${logoHtml}</div>
+      <div class="brand-info">
+        <h1>${store.name}</h1>
+        ${store.description ? `<p class="description">${store.description}</p>` : ''}
+        <p>${store.address}</p>
+        <p>${store.phone}${store.email ? ` · ${store.email}` : ''}</p>
+        <div class="legal">${legalItems}</div>
+      </div>
+      <div class="res-meta">
+        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#0284c7">${docTitle}</div>
+        <div class="code">N° ${code}</div>
+        <div class="date">${dateLabel}</div>
+      </div>
+    </div>`;
+}
+
+function clientSection(client: Client | undefined, title = '👤 Client'): string {
+  return `
+    <div class="section blue">
+      <h3>${title}</h3>
+      <p><strong>${client ? `${client.firstName} ${client.lastName}` : '—'}</strong></p>
+      ${client?.sexe ? `<p>${client.sexe === 'M' ? 'Masculin' : 'Féminin'}${client.profession ? ` · ${client.profession}` : ''}</p>` : ''}
+      <p>${client?.phone ?? ''}${client?.phone2 ? ` / ${client.phone2}` : ''}</p>
+      ${client?.email ? `<p>${client.email}</p>` : ''}
+      ${client?.city || client?.address ? `<p>${[client?.address, client?.city].filter(Boolean).join(', ')}</p>` : ''}
+      ${client?.documentType ? `<p>Pièce: ${client.documentNumber ?? '—'} (${client.documentType})</p>` : ''}
+    </div>`;
+}
+
+function apartmentSection(data: AppData, roomId: string, title = '🏠 Appartement'): string {
+  const room = data.rooms.find((r) => r.id === roomId);
+  if (!room) return `<div class="section violet"><h3>${title}</h3><p>—</p></div>`;
+  const floor = data.floors.find((f) => f.id === room.floorId)?.name;
+  const lines = [
+    `<p><strong>${room.name}</strong></p>`,
+    room.wilaya && `<p><strong>Wilaya:</strong> ${room.wilaya}${room.commune ? ` · <strong>Commune:</strong> ${room.commune}` : ''}</p>`,
+    !room.wilaya && room.commune ? `<p><strong>Commune:</strong> ${room.commune}</p>` : '',
+    room.secteur && `<p><strong>Secteur:</strong> ${room.secteur}</p>`,
+    floor && `<p><strong>Étage:</strong> ${floor}</p>`,
+    `<p><strong>Chambres:</strong> ${room.capacity}</p>`,
+    room.description && `<p><strong>Description:</strong> ${room.description}</p>`,
+  ].filter(Boolean).join('');
+  return `<div class="section violet"><h3>${title}</h3>${lines}</div>`;
+}
+
+function paymentsTable(payments: Payment[]): string {
+  if (payments.length === 0) return '';
+  return `
+    <p class="tbl-head">💳 Historique des paiements</p>
+    <table>
+      <thead><tr><th>Date</th><th>Note</th><th class="right">Montant</th></tr></thead>
+      <tbody>${payments.map((p) => `<tr>
+        <td>${formatDate(p.date)}</td>
+        <td>${p.note ?? '—'}</td>
+        <td class="right badge-paid">${formatDA(p.amount)}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+}
+
+function stampSection(store: StoreInfo, signerLabel: string): string {
+  return `
+    <div class="stamp">
+      <div style="font-size:11px;color:#64748b">
+        <p>Document établi en deux exemplaires.</p>
+        <p style="margin-top:28px">Signature ${signerLabel} : ____________________</p>
+      </div>
+      <div class="cachet">${store.name}<small>Cachet &amp; Signature</small></div>
+    </div>
+    <div class="foot">Document généré par ${store.name}${store.phone ? ` — ${store.phone}` : ''} — Merci de votre confiance.</div>`;
+}
+
+// ─── Facture de vente ────────────────────────────────────────────────────────
+
+export function buildSaleInvoiceHTML(data: AppData, sale: Sale, store: StoreInfo): string {
+  const client = clientById(data, sale.clientId);
+  const paid = salePaid(sale);
+  const remaining = saleRemaining(sale);
+  const mediator = sale.mediatorId ? data.mediators.find((m) => m.id === sale.mediatorId) : undefined;
+
+  const saleDetails = `
+    <div class="section green">
+      <h3>📅 Détails de la vente</h3>
+      <p><strong>Date:</strong> ${formatDate(sale.date)} à ${sale.time}</p>
+      <p><strong>Statut:</strong> ${sale.status === 'paid' ? '<span class="badge-paid">Payée</span>' : '<span class="badge-debt">Dette</span>'}</p>
+      ${sale.notes ? `<p><strong>Remarque:</strong> ${sale.notes}</p>` : ''}
+    </div>`;
+
+  const mediatorSection = mediator ? `
+    <div class="section orange">
+      <h3>🤝 Médiateur</h3>
+      <p><strong>${mediator.firstName} ${mediator.lastName}</strong></p>
+      <p>${mediator.phone}</p>
+      <p><strong>Commission:</strong> ${formatDA(sale.mediatorCommission)}${sale.commissionType === 'percent' && sale.commissionPercent ? ` (${sale.commissionPercent}% du prix de vente)` : ''}</p>
+    </div>` : '';
+
+  return `
+  <div class="doc">
+    ${docHeader(store, sale.code, `Vente du ${formatDate(sale.date)} à ${sale.time}`, 'Facture de Vente')}
+    <div class="grid2">
+      ${clientSection(client, '👤 Acheteur')}
+      ${apartmentSection(data, sale.roomId, '🏠 Appartement vendu')}
+    </div>
+    ${mediatorSection
+      ? `<div class="grid2">${mediatorSection}${saleDetails}</div>`
+      : `<div style="margin-bottom:16px">${saleDetails}</div>`}
+    ${paymentsTable(sale.payments)}
+    <div class="totals-wrap">
+      <div class="row"><span>Prix de vente</span><strong>${formatDA(sale.price)}</strong></div>
+      <div class="row"><span>Total payé</span><span class="badge-paid">${formatDA(paid)}</span></div>
+      <div class="row"><span>Reste dû</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
+      <div class="row grand"><span>Net à payer</span><span>${formatDA(sale.price)}</span></div>
+    </div>
+    ${stampSection(store, 'acheteur')}
+  </div>`;
+}
+
+// ─── Bon d'achat ─────────────────────────────────────────────────────────────
+
+export function buildPurchaseInvoiceHTML(data: AppData, purchase: Purchase, store: StoreInfo): string {
+  const client = clientById(data, purchase.clientId);
+  const paid = purchasePaid(purchase);
+  const remaining = purchaseRemaining(purchase);
+
+  return `
+  <div class="doc">
+    ${docHeader(store, purchase.code, `Achat du ${formatDate(purchase.date)} à ${purchase.time}`, "Bon d'Achat")}
+    <div class="grid2">
+      ${clientSection(client, '👤 Vendeur')}
+      ${apartmentSection(data, purchase.roomId, '🏠 Appartement acquis')}
+    </div>
+    <div class="section green" style="margin-bottom:16px">
+      <h3>📅 Détails de l'achat</h3>
+      <p><strong>Date:</strong> ${formatDate(purchase.date)} à ${purchase.time}</p>
+      <p><strong>Prix d'achat:</strong> ${formatDA(purchase.purchasePrice)}</p>
+      <p><strong>Prix de revente prévu:</strong> ${formatDA(purchase.salePrice)}</p>
+      <p><strong>Statut:</strong> ${purchase.status === 'paid' ? '<span class="badge-paid">Payé</span>' : '<span class="badge-debt">Dette</span>'}</p>
+      ${purchase.notes ? `<p><strong>Remarque:</strong> ${purchase.notes}</p>` : ''}
+    </div>
+    ${paymentsTable(purchase.payments)}
+    <div class="totals-wrap">
+      <div class="row"><span>Prix d'achat</span><strong>${formatDA(purchase.purchasePrice)}</strong></div>
+      <div class="row"><span>Payé par l'agence</span><span class="badge-paid">${formatDA(paid)}</span></div>
+      <div class="row"><span>Reste à payer</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
+      <div class="row grand"><span>Total achat</span><span>${formatDA(purchase.purchasePrice)}</span></div>
+    </div>
+    ${stampSection(store, 'vendeur')}
+  </div>`;
+}
+
+// ─── Reçus de paiement (vente / achat / réservation / médiateur) ────────────
+
+function receiptShell(
+  store: StoreInfo,
+  code: string,
+  title: string,
+  payment: Payment,
+  infoSections: string,
+  totals: { label: string; value: string; cls?: string }[],
+): string {
+  return `
+  <div class="doc">
+    ${docHeader(store, code, `Paiement du ${formatDate(payment.date)}`, title)}
+    <div class="section green" style="margin-bottom:16px;text-align:center;padding:18px">
+      <h3>💰 Montant du paiement</h3>
+      <p style="font-size:26px;font-weight:900;color:#059669;margin-top:4px">${formatDA(payment.amount)}</p>
+      ${payment.note ? `<p style="margin-top:6px;color:#475569">${payment.note}</p>` : ''}
+    </div>
+    ${infoSections}
+    <div class="totals-wrap">
+      ${totals.map((t) => `<div class="row"><span>${t.label}</span><span class="${t.cls ?? ''}">${t.value}</span></div>`).join('')}
+    </div>
+    ${stampSection(store, 'client')}
+  </div>`;
+}
+
+export function buildSalePaymentReceiptHTML(
+  data: AppData, sale: Sale, payment: Payment, store: StoreInfo,
+): string {
+  const client = clientById(data, sale.clientId);
+  const infos = `
+    <div class="grid2">
+      ${clientSection(client, '👤 Acheteur')}
+      ${apartmentSection(data, sale.roomId, '🏠 Appartement vendu')}
+    </div>
+    <div class="section orange" style="margin-bottom:16px">
+      <h3>📋 Vente ${sale.code}</h3>
+      <p><strong>Date de vente:</strong> ${formatDate(sale.date)} à ${sale.time}</p>
+      <p><strong>Prix de vente:</strong> ${formatDA(sale.price)}</p>
+      ${sale.mediatorId ? `<p><strong>Médiateur:</strong> ${mediatorName(data, sale.mediatorId)}</p>` : ''}
+    </div>
+    ${paymentsTable(sale.payments)}`;
+  return receiptShell(store, sale.code, 'Reçu de Paiement — Vente', payment, infos, [
+    { label: 'Prix de vente', value: formatDA(sale.price) },
+    { label: 'Total payé', value: formatDA(salePaid(sale)), cls: 'badge-paid' },
+    { label: 'Reste dû', value: formatDA(saleRemaining(sale)), cls: saleRemaining(sale) > 0 ? 'badge-debt' : 'badge-paid' },
+  ]);
+}
+
+export function buildPurchasePaymentReceiptHTML(
+  data: AppData, purchase: Purchase, payment: Payment, store: StoreInfo,
+): string {
+  const client = clientById(data, purchase.clientId);
+  const infos = `
+    <div class="grid2">
+      ${clientSection(client, '👤 Vendeur')}
+      ${apartmentSection(data, purchase.roomId, '🏠 Appartement acquis')}
+    </div>
+    <div class="section orange" style="margin-bottom:16px">
+      <h3>📋 Achat ${purchase.code}</h3>
+      <p><strong>Date d'achat:</strong> ${formatDate(purchase.date)} à ${purchase.time}</p>
+      <p><strong>Prix d'achat:</strong> ${formatDA(purchase.purchasePrice)}</p>
+      <p><strong>Prix de revente prévu:</strong> ${formatDA(purchase.salePrice)}</p>
+    </div>
+    ${paymentsTable(purchase.payments)}`;
+  return receiptShell(store, purchase.code, 'Reçu de Paiement — Achat', payment, infos, [
+    { label: "Prix d'achat", value: formatDA(purchase.purchasePrice) },
+    { label: "Payé par l'agence", value: formatDA(purchasePaid(purchase)), cls: 'badge-paid' },
+    { label: 'Reste à payer', value: formatDA(purchaseRemaining(purchase)), cls: purchaseRemaining(purchase) > 0 ? 'badge-debt' : 'badge-paid' },
+  ]);
+}
+
+export function buildReservationPaymentReceiptHTML(
+  data: AppData, r: Reservation, payment: Payment, store: StoreInfo,
+): string {
+  const client = clientById(data, r.clientId);
+  const roomsList = r.rooms
+    .map((rr) => data.rooms.find((x) => x.id === rr.roomId)?.name)
+    .filter(Boolean)
+    .join(', ');
+  const infos = `
+    <div class="grid2">
+      ${clientSection(client)}
+      <div class="section violet">
+        <h3>📋 Réservation ${r.code}</h3>
+        <p><strong>Appartement(s):</strong> ${roomsList || '—'}</p>
+        <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
+        <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
+        <p><strong>Durée:</strong> ${nightsBetween(r.checkIn, r.checkOut)} nuit(s)</p>
+      </div>
+    </div>
+    ${paymentsTable(r.payments)}`;
+  return receiptShell(store, r.code, 'Reçu de Paiement — Réservation', payment, infos, [
+    { label: 'Total réservation', value: formatDA(r.total) },
+    { label: 'Total payé', value: formatDA(reservationPaid(r)), cls: 'badge-paid' },
+    { label: 'Reste dû', value: formatDA(reservationRemaining(r)), cls: reservationRemaining(r) > 0 ? 'badge-debt' : 'badge-paid' },
+  ]);
+}
+
+export function buildMediatorPaymentReceiptHTML(
+  data: AppData, mediator: Mediator, payment: Payment, store: StoreInfo,
+): string {
+  const stats = mediatorStats(mediator, data.sales);
+  const salesRows = data.sales
+    .filter((s) => s.mediatorId === mediator.id)
+    .map((s) => {
+      const room = data.rooms.find((r) => r.id === s.roomId);
+      return `<tr>
+        <td>${s.code}</td>
+        <td>${room?.name ?? '—'}</td>
+        <td>${formatDate(s.date)}</td>
+        <td class="right">${formatDA(s.price)}</td>
+        <td class="right badge-paid">${formatDA(s.mediatorCommission)}</td>
+      </tr>`;
+    }).join('');
+  const infos = `
+    <div class="grid2">
+      <div class="section blue">
+        <h3>🤝 Médiateur</h3>
+        <p><strong>${mediator.firstName} ${mediator.lastName}</strong></p>
+        <p>${mediator.phone}${mediator.phone2 ? ` / ${mediator.phone2}` : ''}</p>
+        ${mediator.email ? `<p>${mediator.email}</p>` : ''}
+        ${mediator.city || mediator.address ? `<p>${[mediator.address, mediator.city].filter(Boolean).join(', ')}</p>` : ''}
+        ${mediator.cin ? `<p>CIN: ${mediator.cin}</p>` : ''}
+      </div>
+      <div class="section violet">
+        <h3>📊 Situation des commissions</h3>
+        <p><strong>Ventes réalisées:</strong> ${stats.salesCount}</p>
+        <p><strong>Commissions gagnées:</strong> ${formatDA(stats.commissionEarned)}</p>
+        <p><strong>Déjà payé:</strong> ${formatDA(stats.paid)}</p>
+        <p><strong>Reste dû:</strong> ${formatDA(stats.remaining)}</p>
+      </div>
+    </div>
+    ${salesRows ? `
+      <p class="tbl-head">🏠 Ventes avec ce médiateur</p>
+      <table>
+        <thead><tr><th>Code</th><th>Appartement</th><th>Date</th><th class="right">Prix vente</th><th class="right">Commission</th></tr></thead>
+        <tbody>${salesRows}</tbody>
+      </table>` : ''}
+    ${paymentsTable(mediator.payments)}`;
+  return receiptShell(store, `MED-${mediator.id.slice(0, 6).toUpperCase()}`, 'Reçu de Commission — Médiateur', payment, infos, [
+    { label: 'Commissions gagnées', value: formatDA(stats.commissionEarned) },
+    { label: 'Total payé', value: formatDA(stats.paid), cls: 'badge-paid' },
+    { label: 'Reste dû', value: formatDA(stats.remaining), cls: stats.remaining > 0 ? 'badge-debt' : 'badge-paid' },
+  ]);
 }

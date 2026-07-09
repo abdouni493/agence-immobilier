@@ -40,3 +40,17 @@ export function expenseCategoryName(data: AppData, id: string): string {
 export function reservationRoomLabels(data: AppData, r: Reservation): string {
   return r.rooms.map((rr) => `Appart. ${roomName(data, rr.roomId)}`).join(' · ');
 }
+
+export function mediatorName(data: AppData, id?: string): string {
+  if (!id) return '—';
+  const m = data.mediators.find((x) => x.id === id);
+  return m ? `${m.firstName} ${m.lastName}` : '—';
+}
+
+/** "Nom · Wilaya, Commune" location line for an apartment card / invoice. */
+export function roomLocation(data: AppData, id: string): string {
+  const r = data.rooms.find((x) => x.id === id);
+  if (!r) return '—';
+  const loc = [r.wilaya, r.commune, r.secteur].filter(Boolean).join(', ');
+  return loc || '—';
+}

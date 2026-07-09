@@ -21,13 +21,14 @@ import {
   AlertFilterBar, ReservationAlertBanner, buildAlertIndex, type AlertFilterValue,
 } from '@/components/reservations/reservationAlerts';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { PrintPrompt } from '@/components/ui/PrintPrompt';
 import { reservationPaid, reservationRemaining } from '@/store/selectors';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, formatDateLong, rangesOverlap, todayISO, addDaysISO, monthKey, nightsBetween } from '@/lib/utils';
 import { useToday } from '@/lib/useToday';
 import { clientName, reservationRoomLabels, clientById } from '@/lib/lookups';
-import { buildInvoiceHTML, printHTML } from '@/lib/print';
-import type { Reservation } from '@/types';
+import { buildInvoiceHTML, buildReservationPaymentReceiptHTML, printHTML } from '@/lib/print';
+import type { Reservation, Payment } from '@/types';
 
 type Period = 'today' | 'week' | 'month' | 'all';
 type StatusFilter = 'all' | 'pending' | 'active' | 'paid' | 'debt' | 'cancelled';
@@ -910,8 +911,11 @@ function DetailModal({
 function PaymentModal({ reservation, onClose }: { reservation: Reservation | null; onClose: () => void }) {
   const { t, lang } = useI18n();
   const toast = useToast();
+  const data = useAppData();
+  const storeInfo = useApp((s) => s.storeInfo);
   const addPayment = useApp((s) => s.addPayment);
   const [amount, setAmount] = useState('');
+  const [printAsk, setPrintAsk] = useState<{ reservation: Reservation; payment: Payment } | null>(null);
 
   const r = reservation;
   const remaining = r ? reservationRemaining(r) : 0;
@@ -920,54 +924,70 @@ function PaymentModal({ reservation, onClose }: { reservation: Reservation | nul
 
   const save = async () => {
     if (!r || payNum <= 0) return toast.error(t('login.required'));
-    await addPayment(r.id, Math.min(payNum, remaining), 'Paiement dette');
+    const amt = Math.min(payNum, remaining);
+    await addPayment(r.id, amt, 'Paiement dette');
     toast.success(t('toast.paid'));
     setAmount('');
     onClose();
+    // Build a receipt from the freshly-updated reservation so its totals match.
+    const fresh = useApp.getState().reservations.find((x) => x.id === r.id) ?? r;
+    const payment = fresh.payments[fresh.payments.length - 1]
+      ?? { id: `pay-${Date.now()}`, amount: amt, date: todayISO(), note: 'Paiement dette' };
+    setPrintAsk({ reservation: fresh, payment });
   };
 
   return (
-    <Modal
-      open={!!reservation}
-      onClose={onClose}
-      title={t('res.payDebt')}
-      subtitle={r?.code}
-      size="sm"
-      footer={
-        <div className="flex gap-3 justify-end">
-          <GradientButton variant="glass" onClick={onClose}>{t('common.cancel')}</GradientButton>
-          <GradientButton variant="success" icon={<Wallet size={16} />} onClick={save}>{t('res.savePayment')}</GradientButton>
-        </div>
-      }
-    >
-      {r && (
-        <div className="space-y-4">
-          <div className="rounded-xl bg-grad-warning/10 border border-amber-400/30 p-4 text-center">
-            <p className="text-xs text-ink-secondary">{t('common.remaining')}</p>
-            <p className="text-3xl font-extrabold text-amber-600 mt-1">{formatDA(remaining)}</p>
+    <>
+      <Modal
+        open={!!reservation}
+        onClose={onClose}
+        title={t('res.payDebt')}
+        subtitle={r?.code}
+        size="sm"
+        footer={
+          <div className="flex gap-3 justify-end">
+            <GradientButton variant="glass" onClick={onClose}>{t('common.cancel')}</GradientButton>
+            <GradientButton variant="success" icon={<Wallet size={16} />} onClick={save}>{t('res.savePayment')}</GradientButton>
           </div>
-
-          {r.payments.length > 0 && (
-            <div>
-              <p className="text-xs font-bold text-ink-muted uppercase mb-2">{t('res.paymentHistory')}</p>
-              <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                {r.payments.map((p) => (
-                  <div key={p.id} className="flex justify-between text-sm rounded-lg bg-slate-100/70 px-3 py-1.5">
-                    <span className="text-ink-secondary">{formatDate(p.date, lang)}</span>
-                    <span className="text-emerald-600 font-medium">{formatDA(p.amount)}</span>
-                  </div>
-                ))}
-              </div>
+        }
+      >
+        {r && (
+          <div className="space-y-4">
+            <div className="rounded-xl bg-grad-warning/10 border border-amber-400/30 p-4 text-center">
+              <p className="text-xs text-ink-secondary">{t('common.remaining')}</p>
+              <p className="text-3xl font-extrabold text-amber-600 mt-1">{formatDA(remaining)}</p>
             </div>
-          )}
 
-          <TextField label={`${t('res.payNow')} (DA)`} type="number" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus max={remaining} />
-          <div className="flex items-center justify-between rounded-xl bg-slate-100/70 border border-slate-200 px-4 py-3">
-            <span className="text-sm text-ink-secondary">{t('res.remainingAfter')}</span>
-            <span className={`text-lg font-bold ${after > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{formatDA(after)}</span>
+            {r.payments.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-ink-muted uppercase mb-2">{t('res.paymentHistory')}</p>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                  {r.payments.map((p) => (
+                    <div key={p.id} className="flex justify-between text-sm rounded-lg bg-slate-100/70 px-3 py-1.5">
+                      <span className="text-ink-secondary">{formatDate(p.date, lang)}</span>
+                      <span className="text-emerald-600 font-medium">{formatDA(p.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <TextField label={`${t('res.payNow')} (DA)`} type="number" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus max={remaining} />
+            <div className="flex items-center justify-between rounded-xl bg-slate-100/70 border border-slate-200 px-4 py-3">
+              <span className="text-sm text-ink-secondary">{t('res.remainingAfter')}</span>
+              <span className={`text-lg font-bold ${after > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{formatDA(after)}</span>
+            </div>
           </div>
-        </div>
-      )}
-    </Modal>
+        )}
+      </Modal>
+
+      <PrintPrompt
+        open={!!printAsk}
+        onClose={() => setPrintAsk(null)}
+        onConfirm={() => { if (printAsk) printHTML(`${printAsk.reservation.code}-recu`, buildReservationPaymentReceiptHTML(data, printAsk.reservation, printAsk.payment, storeInfo)); }}
+        title={t('sales.receiptTitle')}
+        message={t('sales.askPrintPayment')}
+      />
+    </>
   );
 }

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Building2, Mail, Lock, LogIn,
-  MapPin, Phone, Star, ShieldCheck,
+  Building2, Mail, Lock, LogIn, UserPlus,
+  MapPin, Phone, Star, ShieldCheck, User, AtSign,
 } from 'lucide-react';
 import { useApp } from '@/store/appStore';
 import { useI18n } from '@/i18n';
@@ -49,6 +49,7 @@ export default function Login() {
   const navigate = useNavigate();
   const toast = useToast();
   const login = useApp((s) => s.login);
+  const signup = useApp((s) => s.signup);
   const storeInfo = useApp((s) => s.storeInfo);
   const loadStoreInfo = useApp((s) => s.loadStoreInfo);
 
@@ -58,18 +59,74 @@ export default function Login() {
     loadStoreInfo();
   }, [loadStoreInfo]);
 
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Sign-in fields
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+
+  // Sign-up (admin account) fields
+  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier || !password) return toast.error(t('login.required'));
-    if (await login(identifier, password)) {
-      toast.success(t('login.welcome'));
-      navigate('/app/dashboard');
-    } else {
-      toast.error(t('login.error'));
+    setSubmitting(true);
+    try {
+      if (await login(identifier, password)) {
+        toast.success(t('login.welcome'));
+        navigate('/app/dashboard');
+      } else {
+        toast.error(t('login.error'));
+      }
+    } finally {
+      setSubmitting(false);
     }
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fullName || !username || !email || !signupPassword || !confirmPassword) {
+      return toast.error(t('login.required'));
+    }
+    if (signupPassword !== confirmPassword) {
+      return toast.error(t('login.mismatch'));
+    }
+    // Split the full name into first/last for the profile record.
+    const parts = fullName.trim().split(/\s+/);
+    const firstName = parts.shift() ?? '';
+    const lastName = parts.join(' ');
+
+    setSubmitting(true);
+    try {
+      const res = await signup({
+        firstName,
+        lastName,
+        email: email.trim(),
+        username: username.trim(),
+        password: signupPassword,
+      });
+      if (res.ok) {
+        toast.success(t('login.accountCreated'));
+        navigate('/app/dashboard');
+      } else {
+        toast.error(res.error || t('login.error'));
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const switchMode = (next: 'signin' | 'signup') => {
+    setMode(next);
+    setPassword('');
+    setSignupPassword('');
+    setConfirmPassword('');
   };
 
   return (
@@ -240,41 +297,145 @@ export default function Login() {
               <motion.div variants={staggerContainer} initial="initial" animate="animate">
                 {/* Header */}
                 <motion.div variants={fadeInUp} className="mb-7">
-                  <h2 className="text-2xl font-extrabold text-ink-primary">{t('login.signIn')}</h2>
-                  <p className="text-sm text-ink-muted mt-1">{t('login.subtitle')}</p>
+                  <h2 className="text-2xl font-extrabold text-ink-primary">
+                    {mode === 'signin' ? t('login.signIn') : t('login.signUpTitle')}
+                  </h2>
+                  <p className="text-sm text-ink-muted mt-1">
+                    {mode === 'signin' ? t('login.subtitle') : t('login.createAccountHint')}
+                  </p>
                 </motion.div>
 
-                {/* Form */}
-                <motion.form onSubmit={handleLogin} className="space-y-4">
-                  <motion.div variants={fadeInUp}>
-                    <TextField
-                      label={t('login.identifier')}
-                      icon={<Mail size={17} />}
-                      value={identifier}
-                      onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="email ou nom d'utilisateur"
-                      autoComplete="username"
-                      autoFocus
-                    />
-                  </motion.div>
-                  <motion.div variants={fadeInUp}>
-                    <TextField
-                      label={t('login.password')}
-                      type="password"
-                      icon={<Lock size={17} />}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      autoComplete="current-password"
-                    />
-                  </motion.div>
+                {mode === 'signin' ? (
+                  /* ── Sign-in form ── */
+                  <motion.form onSubmit={handleLogin} className="space-y-4">
+                    <motion.div variants={fadeInUp}>
+                      <TextField
+                        label={t('login.identifier')}
+                        icon={<Mail size={17} />}
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
+                        placeholder="email ou nom d'utilisateur"
+                        autoComplete="username"
+                        autoFocus
+                      />
+                    </motion.div>
+                    <motion.div variants={fadeInUp}>
+                      <TextField
+                        label={t('login.password')}
+                        type="password"
+                        icon={<Lock size={17} />}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        autoComplete="current-password"
+                      />
+                    </motion.div>
 
-                  <motion.div variants={fadeInUp} className="pt-1">
-                    <GradientButton type="submit" fullWidth size="lg" icon={<LogIn size={18} />} glow>
-                      {t('login.signIn')}
-                    </GradientButton>
-                  </motion.div>
-                </motion.form>
+                    <motion.div variants={fadeInUp} className="pt-1">
+                      <GradientButton
+                        type="submit"
+                        fullWidth
+                        size="lg"
+                        icon={<LogIn size={18} />}
+                        glow
+                        disabled={submitting}
+                      >
+                        {t('login.signIn')}
+                      </GradientButton>
+                    </motion.div>
+
+                    <motion.div variants={fadeInUp} className="pt-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => switchMode('signup')}
+                        className="text-sm font-semibold text-brand-600 hover:text-brand-700 transition-colors"
+                      >
+                        {t('login.createAccount')}
+                      </button>
+                    </motion.div>
+                  </motion.form>
+                ) : (
+                  /* ── Sign-up (create admin account) form ── */
+                  <motion.form onSubmit={handleSignup} className="space-y-4">
+                    <motion.div variants={fadeInUp}>
+                      <TextField
+                        label={t('login.fullName')}
+                        icon={<User size={17} />}
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder={t('login.fullName')}
+                        autoComplete="name"
+                        autoFocus
+                      />
+                    </motion.div>
+                    <motion.div variants={fadeInUp}>
+                      <TextField
+                        label={t('login.username')}
+                        icon={<AtSign size={17} />}
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        placeholder={t('login.username')}
+                        autoComplete="username"
+                      />
+                    </motion.div>
+                    <motion.div variants={fadeInUp}>
+                      <TextField
+                        label={t('login.email')}
+                        type="email"
+                        icon={<Mail size={17} />}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="admin@exemple.com"
+                        autoComplete="email"
+                      />
+                    </motion.div>
+                    <motion.div variants={fadeInUp}>
+                      <TextField
+                        label={t('login.password')}
+                        type="password"
+                        icon={<Lock size={17} />}
+                        value={signupPassword}
+                        onChange={(e) => setSignupPassword(e.target.value)}
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                      />
+                    </motion.div>
+                    <motion.div variants={fadeInUp}>
+                      <TextField
+                        label={t('login.confirmPassword')}
+                        type="password"
+                        icon={<Lock size={17} />}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                      />
+                    </motion.div>
+
+                    <motion.div variants={fadeInUp} className="pt-1">
+                      <GradientButton
+                        type="submit"
+                        fullWidth
+                        size="lg"
+                        icon={<UserPlus size={18} />}
+                        glow
+                        disabled={submitting}
+                      >
+                        {t('login.signUpAction')}
+                      </GradientButton>
+                    </motion.div>
+
+                    <motion.div variants={fadeInUp} className="pt-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => switchMode('signin')}
+                        className="text-sm font-semibold text-brand-600 hover:text-brand-700 transition-colors"
+                      >
+                        {t('login.backToSignIn')}
+                      </button>
+                    </motion.div>
+                  </motion.form>
+                )}
               </motion.div>
             </div>
 

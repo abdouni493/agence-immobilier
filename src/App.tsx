@@ -12,9 +12,12 @@ import type { ModuleKey, Permissions } from '@/types';
 const Login = lazy(() => import('@/pages/Login'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Reservations = lazy(() => import('@/pages/Reservations'));
+const Ventes = lazy(() => import('@/pages/Ventes'));
+const Achats = lazy(() => import('@/pages/Achats'));
 const Chambres = lazy(() => import('@/pages/Chambres'));
 const Services = lazy(() => import('@/pages/Services'));
 const Clients = lazy(() => import('@/pages/Clients'));
+const Mediateurs = lazy(() => import('@/pages/Mediateurs'));
 const Workers = lazy(() => import('@/pages/Workers'));
 const Expenses = lazy(() => import('@/pages/Expenses'));
 const Caisse = lazy(() => import('@/pages/Caisse'));
@@ -25,8 +28,11 @@ const Settings = lazy(() => import('@/pages/Settings'));
 const preload = () => {
   import('@/pages/Dashboard');
   import('@/pages/Reservations');
+  import('@/pages/Ventes');
+  import('@/pages/Achats');
   import('@/pages/Chambres');
   import('@/pages/Clients');
+  import('@/pages/Mediateurs');
   import('@/pages/Workers');
   import('@/pages/Services');
   import('@/pages/Expenses');
@@ -64,6 +70,14 @@ function AppRoutes() {
           element={<PageShell><RequireModule module="reservations"><Reservations /></RequireModule></PageShell>}
         />
         <Route
+          path="ventes"
+          element={<PageShell><RequireModule module="ventes"><Ventes /></RequireModule></PageShell>}
+        />
+        <Route
+          path="achats"
+          element={<PageShell><RequireModule module="achats"><Achats /></RequireModule></PageShell>}
+        />
+        <Route
           path="chambres"
           element={<PageShell><RequireModule module="chambres"><Chambres /></RequireModule></PageShell>}
         />
@@ -74,6 +88,10 @@ function AppRoutes() {
         <Route
           path="clients"
           element={<PageShell><RequireModule module="clients"><Clients /></RequireModule></PageShell>}
+        />
+        <Route
+          path="mediators"
+          element={<PageShell><RequireModule module="mediators"><Mediateurs /></RequireModule></PageShell>}
         />
         <Route
           path="workers"

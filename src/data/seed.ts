@@ -10,6 +10,9 @@ import type {
   ExpenseCategory,
   Maintenance,
   CashTransaction,
+  Mediator,
+  Sale,
+  Purchase,
 } from '@/types';
 
 export interface AppData {
@@ -24,6 +27,9 @@ export interface AppData {
   expenseCategories: ExpenseCategory[];
   maintenances: Maintenance[];
   cashTransactions: CashTransaction[];
+  mediators: Mediator[];
+  sales: Sale[];
+  purchases: Purchase[];
   roles: string[];
 }
 
@@ -40,6 +46,9 @@ export function createInitialData(): AppData {
     expenseCategories: [],
     maintenances: [],
     cashTransactions: [],
+    mediators: [],
+    sales: [],
+    purchases: [],
     roles: [],
   };
 }

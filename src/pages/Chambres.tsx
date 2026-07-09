@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BedDouble, Plus, Pencil, Trash2, Wrench, Eye, Layers, Tag, Users, Check, X, Wallet,
+  MapPin, UserPlus, Home, Tags,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -14,13 +15,14 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TextField, SelectField, SegmentedControl, TextArea } from '@/components/ui/Field';
+import { ClientForm } from '@/components/forms/ClientForm';
 import { effectiveRoomStatus, reservationPaid } from '@/store/selectors';
 import { staggerContainer, listItem } from '@/animations';
-import { formatDA, formatDate, todayISO, addDaysISO, nightsBetween } from '@/lib/utils';
+import { formatDA, formatDate, todayISO, addDaysISO, nightsBetween, cn } from '@/lib/utils';
 import { categoryName, floorName, clientName } from '@/lib/lookups';
-import type { Room, RoomStatus } from '@/types';
+import type { Room, RoomStatus, PropertyType } from '@/types';
 
-type Filter = 'all' | RoomStatus;
+type Filter = 'all' | RoomStatus | 'rental' | 'sale';
 
 export default function Chambres() {
   const { t, lang } = useI18n();
@@ -53,10 +55,13 @@ export default function Chambres() {
     () => rooms.map((r) => ({ room: r, status: effectiveRoomStatus(r, data.reservations, today) })),
     [rooms, data.reservations, today],
   );
-  const filtered = useMemo(
-    () => (filter === 'all' ? withStatus : withStatus.filter((x) => x.status === filter)),
-    [withStatus, filter],
-  );
+  const filtered = useMemo(() => {
+    if (filter === 'all') return withStatus;
+    if (filter === 'rental' || filter === 'sale') {
+      return withStatus.filter((x) => (x.room.propertyType ?? 'rental') === filter);
+    }
+    return withStatus.filter((x) => x.status === filter);
+  }, [withStatus, filter]);
 
   return (
     <div>
@@ -81,15 +86,18 @@ export default function Chambres() {
         }
       />
 
-      <div className="mb-5">
+      <div className="mb-5 flex flex-wrap gap-3">
         <SegmentedControl<Filter>
           value={filter}
           onChange={setFilter}
+          size="sm"
           options={[
             { value: 'all', label: t('common.all') },
             { value: 'available', label: t('rooms.available') },
             { value: 'occupied', label: t('rooms.occupied') },
             { value: 'maintenance', label: t('rooms.maintenance') },
+            { value: 'rental', label: t('apt.typeRental') },
+            { value: 'sale', label: t('apt.typeSale') },
           ]}
         />
       </div>
@@ -112,17 +120,38 @@ export default function Chambres() {
                       </div>
                       <div>
                         <h3 className="font-bold text-white text-lg">{room.name}</h3>
-                        <p className="text-xs text-sky-200/80">{categoryName(data, room.categoryId)} · {floorName(data, room.floorId)}</p>
+                        <p className="text-xs text-sky-200/80">
+                          {[categoryName(data, room.categoryId), floorName(data, room.floorId)].filter((v) => v && v !== '—').join(' · ') || '—'}
+                        </p>
                       </div>
                     </div>
-                    <RoomStatusBadge status={status} />
+                    <div className="flex flex-col items-end gap-1.5">
+                      <RoomStatusBadge status={status} />
+                      <PropertyTypeBadge type={room.propertyType ?? 'rental'} />
+                    </div>
                   </div>
+
+                  {(room.wilaya || room.commune || room.secteur) && (
+                    <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-300">
+                      <MapPin size={13} className="text-sky-300 shrink-0" />
+                      {[room.wilaya, room.commune, room.secteur].filter(Boolean).join(', ')}
+                    </p>
+                  )}
+                  {room.ownerClientId && (
+                    <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-300">
+                      <Users size={13} className="text-sky-300 shrink-0" /> {clientName(data, room.ownerClientId)}
+                    </p>
+                  )}
 
                   <div className="mt-4 flex items-center justify-between text-sm">
                     <span className="flex items-center gap-1.5 text-slate-200">
-                      <Users size={15} className="text-sky-300" /> {room.capacity} {t('common.persons')}
+                      <Home size={15} className="text-sky-300" /> {room.capacity} {t('apt.roomsNumber').toLowerCase()}
                     </span>
-                    <span className="text-lg font-extrabold text-white">{formatDA(room.pricePerNight)}<span className="text-xs text-sky-250 text-sky-200/70 font-medium"> / {t('common.night')}</span></span>
+                    {(room.propertyType ?? 'rental') === 'sale' ? (
+                      room.salePrice ? <span className="text-lg font-extrabold text-white">{formatDA(room.salePrice)}</span> : null
+                    ) : (
+                      <span className="text-lg font-extrabold text-white">{formatDA(room.pricePerNight)}<span className="text-xs text-sky-200/70 font-medium"> / {t('common.night')}</span></span>
+                    )}
                   </div>
 
                   {status === 'maintenance' && room.maintenanceNote && (
@@ -167,6 +196,7 @@ export default function Chambres() {
           room={formRoom}
           floors={floors}
           categories={categories}
+          clients={data.clients}
           onAddFloor={addFloor}
           onAddCategory={addCategory}
           onClose={() => setFormOpen(false)}
@@ -225,12 +255,21 @@ function RoomStatusBadge({ status }: { status: RoomStatus }) {
   return <Badge tone="warning" dot className="bg-amber-500/20 text-amber-300 border-amber-500/30">{t('rooms.maintenance')}</Badge>;
 }
 
+function PropertyTypeBadge({ type }: { type: PropertyType }) {
+  const { t } = useI18n();
+  if (type === 'sale') {
+    return <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-200 border border-amber-500/30"><Tags size={10} /> {t('apt.typeSale')}</span>;
+  }
+  return <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-sky-500/20 text-sky-200 border border-sky-500/30"><BedDouble size={10} /> {t('apt.typeRental')}</span>;
+}
+
 function RoomFormModal({
-  room, floors, categories, onAddFloor, onAddCategory, onClose, onSave,
+  room, floors, categories, clients, onAddFloor, onAddCategory, onClose, onSave,
 }: {
   room: Room | null;
   floors: { id: string; name: string }[];
   categories: { id: string; name: string }[];
+  clients: { id: string; firstName: string; lastName: string }[];
   onAddFloor: (name: string) => void;
   onAddCategory: (name: string) => void;
   onClose: () => void;
@@ -238,34 +277,68 @@ function RoomFormModal({
 }) {
   const { t } = useI18n();
   const toast = useToast();
+  const addClient = useApp((s) => s.addClient);
   const [name, setName] = useState(room?.name ?? '');
-  const [capacity, setCapacity] = useState(String(room?.capacity ?? 2));
-  const [floorId, setFloorId] = useState(room?.floorId ?? floors[0]?.id ?? '');
-  const [categoryId, setCategoryId] = useState(room?.categoryId ?? categories[0]?.id ?? '');
+  const [capacity, setCapacity] = useState(String(room?.capacity ?? 1));
+  const [floorId, setFloorId] = useState(room?.floorId ?? '');
+  const [categoryId, setCategoryId] = useState(room?.categoryId ?? '');
   const [price, setPrice] = useState(String(room?.pricePerNight ?? ''));
+  const [salePrice, setSalePrice] = useState(room?.salePrice != null ? String(room.salePrice) : '');
+  const [propertyType, setPropertyType] = useState<PropertyType>(room?.propertyType ?? 'rental');
+  const [wilaya, setWilaya] = useState(room?.wilaya ?? '');
+  const [commune, setCommune] = useState(room?.commune ?? '');
+  const [secteur, setSecteur] = useState(room?.secteur ?? '');
+  const [description, setDescription] = useState(room?.description ?? '');
+  const [ownerClientId, setOwnerClientId] = useState(room?.ownerClientId ?? '');
   const [newFloor, setNewFloor] = useState('');
   const [newCat, setNewCat] = useState('');
   const [showFloorInput, setShowFloorInput] = useState(false);
   const [showCatInput, setShowCatInput] = useState(false);
+  const [creatingClient, setCreatingClient] = useState(false);
 
   const save = () => {
-    if (!name.trim() || !price || !floorId || !categoryId) return toast.error(t('login.required'));
+    if (!name.trim()) return toast.error(t('login.required'));
+    if (propertyType === 'rental' && !price) return toast.error(t('login.required'));
     onSave({
       name: name.trim(),
-      capacity: Number(capacity),
+      capacity: Number(capacity) || 1,
       floorId,
       categoryId,
-      pricePerNight: Number(price),
+      pricePerNight: price ? Number(price) : 0,
       maintenanceNote: room?.maintenanceNote,
+      wilaya: wilaya.trim() || undefined,
+      commune: commune.trim() || undefined,
+      secteur: secteur.trim() || undefined,
+      description: description.trim() || undefined,
+      propertyType,
+      ownerClientId: ownerClientId || undefined,
+      salePrice: salePrice ? Number(salePrice) : undefined,
     });
   };
+
+  if (creatingClient) {
+    return (
+      <Modal open onClose={onClose} title={t('clients.new')} size="lg">
+        <ClientForm
+          submitLabel={t('common.create')}
+          onCancel={() => setCreatingClient(false)}
+          onSave={async (form) => {
+            const c = await addClient(form);
+            setOwnerClientId(c.id);
+            setCreatingClient(false);
+            toast.success(t('toast.created'));
+          }}
+        />
+      </Modal>
+    );
+  }
 
   return (
     <Modal
       open
       onClose={onClose}
       title={room ? `${t('common.edit')} · ${room.name}` : t('rooms.new')}
-      size="md"
+      size="lg"
       footer={
         <div className="flex gap-3 justify-end">
           <GradientButton variant="glass" onClick={onClose}>{t('common.cancel')}</GradientButton>
@@ -273,45 +346,86 @@ function RoomFormModal({
         </div>
       }
     >
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <TextField label={t('rooms.roomName')} required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        <TextField label={t('rooms.places')} type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
-
+      <div className="space-y-5">
+        {/* Type selector */}
         <div>
-          <SelectField label={t('rooms.floor')} required value={floorId} onChange={(e) => setFloorId(e.target.value)}>
-            {floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </SelectField>
-          {!showFloorInput ? (
-            <button type="button" onClick={() => setShowFloorInput(true)} className="mt-1.5 text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1">
-              <Plus size={13} /> {t('rooms.newFloor')}
+          <p className="text-xs font-semibold text-ink-secondary mb-1.5">{t('apt.type')}</p>
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1.5">
+            <button onClick={() => setPropertyType('rental')} className={cn('flex-1 h-10 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5', propertyType === 'rental' ? 'bg-white shadow text-brand-700' : 'text-ink-secondary')}>
+              <BedDouble size={15} /> {t('apt.typeRental')}
             </button>
-          ) : (
-            <div className="mt-2 flex gap-2">
-              <input value={newFloor} onChange={(e) => setNewFloor(e.target.value)} placeholder={t('rooms.newFloor')} className="flex-1 h-9 rounded-lg bg-slate-100/70 border border-slate-200 px-3 text-sm text-ink-primary outline-none focus:border-brand-400/60" />
-              <button type="button" onClick={() => { if (newFloor.trim()) { onAddFloor(newFloor.trim()); setNewFloor(''); setShowFloorInput(false); } }} className="grid h-9 w-9 place-items-center rounded-lg bg-grad-primary text-white"><Check size={16} /></button>
-              <button type="button" onClick={() => { setShowFloorInput(false); setNewFloor(''); }} className="grid h-9 w-9 place-items-center rounded-lg glass text-ink-secondary"><X size={16} /></button>
-            </div>
-          )}
+            <button onClick={() => setPropertyType('sale')} className={cn('flex-1 h-10 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5', propertyType === 'sale' ? 'bg-white shadow text-brand-700' : 'text-ink-secondary')}>
+              <Tags size={15} /> {t('apt.typeSale')}
+            </button>
+          </div>
         </div>
 
-        <div>
-          <SelectField label={t('common.category')} required value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </SelectField>
-          {!showCatInput ? (
-            <button type="button" onClick={() => setShowCatInput(true)} className="mt-1.5 text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1">
-              <Plus size={13} /> {t('rooms.newCategory')}
-            </button>
+        {/* Identity */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <TextField label={t('rooms.roomName')} required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          <TextField label={t('apt.roomsNumber')} type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
+          <TextField label={t('apt.wilaya')} value={wilaya} onChange={(e) => setWilaya(e.target.value)} />
+          <TextField label={t('apt.commune')} value={commune} onChange={(e) => setCommune(e.target.value)} />
+          <TextField label={t('apt.secteur')} value={secteur} onChange={(e) => setSecteur(e.target.value)} />
+
+          <div>
+            <SelectField label={t('apt.etage')} value={floorId} onChange={(e) => setFloorId(e.target.value)}>
+              <option value="">—</option>
+              {floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </SelectField>
+            {!showFloorInput ? (
+              <button type="button" onClick={() => setShowFloorInput(true)} className="mt-1.5 text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1">
+                <Plus size={13} /> {t('rooms.newFloor')}
+              </button>
+            ) : (
+              <div className="mt-2 flex gap-2">
+                <input value={newFloor} onChange={(e) => setNewFloor(e.target.value)} placeholder={t('rooms.newFloor')} className="flex-1 h-9 rounded-lg bg-slate-100/70 border border-slate-200 px-3 text-sm text-ink-primary outline-none focus:border-brand-400/60" />
+                <button type="button" onClick={() => { if (newFloor.trim()) { onAddFloor(newFloor.trim()); setNewFloor(''); setShowFloorInput(false); } }} className="grid h-9 w-9 place-items-center rounded-lg bg-grad-primary text-white"><Check size={16} /></button>
+                <button type="button" onClick={() => { setShowFloorInput(false); setNewFloor(''); }} className="grid h-9 w-9 place-items-center rounded-lg glass text-ink-secondary"><X size={16} /></button>
+              </div>
+            )}
+          </div>
+
+          {propertyType === 'rental' ? (
+            <>
+              <div>
+                <SelectField label={t('common.category')} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+                  <option value="">—</option>
+                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </SelectField>
+                {!showCatInput ? (
+                  <button type="button" onClick={() => setShowCatInput(true)} className="mt-1.5 text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1">
+                    <Plus size={13} /> {t('rooms.newCategory')}
+                  </button>
+                ) : (
+                  <div className="mt-2 flex gap-2">
+                    <input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder={t('rooms.newCategory')} className="flex-1 h-9 rounded-lg bg-slate-100/70 border border-slate-200 px-3 text-sm text-ink-primary outline-none focus:border-brand-400/60" />
+                    <button type="button" onClick={() => { if (newCat.trim()) { onAddCategory(newCat.trim()); setNewCat(''); setShowCatInput(false); } }} className="grid h-9 w-9 place-items-center rounded-lg bg-grad-primary text-white"><Check size={16} /></button>
+                    <button type="button" onClick={() => { setShowCatInput(false); setNewCat(''); }} className="grid h-9 w-9 place-items-center rounded-lg glass text-ink-secondary"><X size={16} /></button>
+                  </div>
+                )}
+              </div>
+              <TextField label={`${t('rooms.pricePerNight')} (DA)`} required type="number" value={price} onChange={(e) => setPrice(e.target.value)} />
+            </>
           ) : (
-            <div className="mt-2 flex gap-2">
-              <input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder={t('rooms.newCategory')} className="flex-1 h-9 rounded-lg bg-slate-100/70 border border-slate-200 px-3 text-sm text-ink-primary outline-none focus:border-brand-400/60" />
-              <button type="button" onClick={() => { if (newCat.trim()) { onAddCategory(newCat.trim()); setNewCat(''); setShowCatInput(false); } }} className="grid h-9 w-9 place-items-center rounded-lg bg-grad-primary text-white"><Check size={16} /></button>
-              <button type="button" onClick={() => { setShowCatInput(false); setNewCat(''); }} className="grid h-9 w-9 place-items-center rounded-lg glass text-ink-secondary"><X size={16} /></button>
-            </div>
+            <TextField label={t('apt.salePrice')} type="number" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} />
           )}
+
+          <TextArea wrapClassName="sm:col-span-2" label={t('apt.description')} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
 
-        <TextField wrapClassName="sm:col-span-2" label={`${t('rooms.pricePerNight')} (DA)`} required type="number" value={price} onChange={(e) => setPrice(e.target.value)} />
+        {/* Owner client */}
+        <div>
+          <p className="text-xs font-semibold text-ink-secondary mb-1.5">{t('apt.owner')}</p>
+          <p className="text-[11px] text-ink-muted mb-2">{t('apt.ownerHint')}</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <SelectField wrapClassName="flex-1" value={ownerClientId} onChange={(e) => setOwnerClientId(e.target.value)}>
+              <option value="">{t('apt.noOwner')}</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>)}
+            </SelectField>
+            <GradientButton variant="glass" icon={<UserPlus size={16} />} onClick={() => setCreatingClient(true)}>{t('res.newClient')}</GradientButton>
+          </div>
+        </div>
       </div>
     </Modal>
   );

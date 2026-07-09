@@ -21,6 +21,10 @@ import type {
   ExpenseCategory,
   Maintenance,
   CashTransaction,
+  Mediator,
+  MediatorPayment,
+  Sale,
+  Purchase,
   Permissions,
   ModuleKey,
 } from '@/types';
@@ -71,6 +75,86 @@ function dbToRoom(row: Record<string, unknown>): Room {
     pricePerNight: row.price_per_night as number,
     status: row.status as Room['status'],
     maintenanceNote: (row.maintenance_note as string) || undefined,
+    wilaya: (row.wilaya as string) || undefined,
+    commune: (row.commune as string) || undefined,
+    secteur: (row.secteur as string) || undefined,
+    description: (row.description as string) || undefined,
+    propertyType: (row.property_type as Room['propertyType']) || 'rental',
+    ownerClientId: (row.owner_client_id as string) || undefined,
+    salePrice: row.sale_price != null ? (row.sale_price as number) : undefined,
+    purchasePrice: row.purchase_price != null ? (row.purchase_price as number) : undefined,
+  };
+}
+
+function dbToPaymentRow(p: Record<string, unknown>): Payment {
+  return {
+    id: p.id as string,
+    amount: p.amount as number,
+    date: p.date as string,
+    note: (p.note as string) || undefined,
+  };
+}
+
+function dbToMediator(row: Record<string, unknown>): Mediator {
+  const payments: MediatorPayment[] = ((row.mediator_payments as Record<string, unknown>[]) || [])
+    .map(dbToPaymentRow)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return {
+    id: row.id as string,
+    firstName: row.first_name as string,
+    lastName: row.last_name as string,
+    phone: row.phone as string,
+    phone2: (row.phone2 as string) || undefined,
+    email: (row.email as string) || undefined,
+    address: (row.address as string) || undefined,
+    city: (row.city as string) || undefined,
+    cin: (row.cin as string) || undefined,
+    notes: (row.notes as string) || undefined,
+    payments,
+    createdAt: ((row.created_at as string) || '').slice(0, 10),
+  };
+}
+
+function dbToSale(row: Record<string, unknown>): Sale {
+  const payments: Payment[] = ((row.sale_payments as Record<string, unknown>[]) || [])
+    .map(dbToPaymentRow)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return {
+    id: row.id as string,
+    code: row.code as string,
+    roomId: (row.room_id as string) || '',
+    clientId: row.client_id as string,
+    mediatorId: (row.mediator_id as string) || undefined,
+    commissionType: (row.commission_type as Sale['commissionType']) || 'amount',
+    commissionPercent: row.commission_percent != null ? (row.commission_percent as number) : undefined,
+    mediatorCommission: (row.mediator_commission as number) || 0,
+    price: row.price as number,
+    date: row.date as string,
+    time: (row.time as string) || '10:00',
+    payments,
+    status: row.status as Sale['status'],
+    notes: (row.notes as string) || undefined,
+    createdAt: ((row.created_at as string) || '').slice(0, 10),
+  };
+}
+
+function dbToPurchase(row: Record<string, unknown>): Purchase {
+  const payments: Payment[] = ((row.purchase_payments as Record<string, unknown>[]) || [])
+    .map(dbToPaymentRow)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return {
+    id: row.id as string,
+    code: row.code as string,
+    roomId: (row.room_id as string) || '',
+    clientId: row.client_id as string,
+    purchasePrice: (row.purchase_price as number) || 0,
+    salePrice: (row.sale_price as number) || 0,
+    date: row.date as string,
+    time: (row.time as string) || '10:00',
+    payments,
+    status: row.status as Purchase['status'],
+    notes: (row.notes as string) || undefined,
+    createdAt: ((row.created_at as string) || '').slice(0, 10),
   };
 }
 
@@ -278,6 +362,19 @@ function nextResCode(reservations: Reservation[]): string {
   return `RES-${String(max + 1).padStart(3, '0')}`;
 }
 
+function nextCode(list: { code: string }[], prefix: string): string {
+  const max = list.reduce((m, r) => {
+    const n = parseInt(r.code.replace(/\D/g, ''), 10);
+    return isNaN(n) ? m : Math.max(m, n);
+  }, 0);
+  return `${prefix}-${String(max + 1).padStart(3, '0')}`;
+}
+
+/** paid/debt reconciliation for sales & purchases (no lifecycle statuses). */
+function settleStatus(total: number, payments: Payment[]): 'paid' | 'debt' {
+  return paymentsSum(payments) >= total ? 'paid' : 'debt';
+}
+
 // ─── State interface ───────────────────────────────────────────────────────
 
 interface AuthState {
@@ -312,7 +409,7 @@ interface AppState extends AppData, AuthState {
   deleteClient: (id: string) => Promise<void>;
 
   // Rooms / floors / categories
-  addRoom: (r: Omit<Room, 'id' | 'status'>) => Promise<void>;
+  addRoom: (r: Omit<Room, 'id' | 'status'>) => Promise<Room | null>;
   updateRoom: (id: string, patch: Partial<Room>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
   setRoomMaintenance: (id: string, note?: string) => Promise<void>;
@@ -357,6 +454,24 @@ interface AppState extends AppData, AuthState {
   // Cash
   addCashTransaction: (t: Omit<CashTransaction, 'id'>) => Promise<void>;
 
+  // Mediators
+  addMediator: (m: Omit<Mediator, 'id' | 'createdAt' | 'payments'>) => Promise<Mediator>;
+  updateMediator: (id: string, patch: Partial<Mediator>) => Promise<void>;
+  deleteMediator: (id: string) => Promise<void>;
+  addMediatorPayment: (mediatorId: string, amount: number, note?: string) => Promise<MediatorPayment | null>;
+
+  // Sales (ventes)
+  addSale: (s: Omit<Sale, 'id' | 'code' | 'createdAt'>) => Promise<Sale | null>;
+  updateSale: (id: string, patch: Partial<Sale>) => Promise<void>;
+  deleteSale: (id: string) => Promise<void>;
+  addSalePayment: (saleId: string, amount: number, note?: string) => Promise<Payment | null>;
+
+  // Purchases (achats)
+  addPurchase: (p: Omit<Purchase, 'id' | 'code' | 'createdAt'>) => Promise<Purchase | null>;
+  updatePurchase: (id: string, patch: Partial<Purchase>) => Promise<void>;
+  deletePurchase: (id: string) => Promise<void>;
+  addPurchasePayment: (purchaseId: string, amount: number, note?: string) => Promise<Payment | null>;
+
   // Settings / data
   updateStoreInfo: (patch: Partial<StoreInfo>) => Promise<void>;
   exportData: () => string;
@@ -391,6 +506,9 @@ export const useApp = create<AppState>()((set, get) => ({
         expCatsRes,
         maintenancesRes,
         cashRes,
+        mediatorsRes,
+        salesRes,
+        purchasesRes,
         settingsRes,
       ] = await Promise.all([
         supabase.from('clients').select('*').order('created_at', { ascending: false }),
@@ -410,6 +528,9 @@ export const useApp = create<AppState>()((set, get) => ({
         supabase.from('expense_categories').select('*').order('name'),
         supabase.from('maintenances').select('*').order('date', { ascending: false }),
         supabase.from('cash_transactions').select('*').order('date', { ascending: false }),
+        supabase.from('mediators').select('*, mediator_payments(*)').order('created_at', { ascending: false }),
+        supabase.from('sales').select('*, sale_payments(*)').order('created_at', { ascending: false }),
+        supabase.from('purchases').select('*, purchase_payments(*)').order('created_at', { ascending: false }),
         supabase.from('settings').select('*').single(),
       ]);
 
@@ -437,6 +558,9 @@ export const useApp = create<AppState>()((set, get) => ({
         cashTransactions: ((cashRes.data ?? []) as Record<string, unknown>[]).map(
           dbToCashTransaction,
         ),
+        mediators: ((mediatorsRes.data ?? []) as Record<string, unknown>[]).map(dbToMediator),
+        sales: ((salesRes.data ?? []) as Record<string, unknown>[]).map(dbToSale),
+        purchases: ((purchasesRes.data ?? []) as Record<string, unknown>[]).map(dbToPurchase),
         roles,
         storeInfo: settingsRes.data
           ? dbToStoreInfo(settingsRes.data as Record<string, unknown>)
@@ -669,32 +793,52 @@ export const useApp = create<AppState>()((set, get) => ({
       .insert({
         name: r.name,
         capacity: r.capacity,
-        floor_id: r.floorId,
-        category_id: r.categoryId,
+        floor_id: r.floorId || null,
+        category_id: r.categoryId || null,
         price_per_night: r.pricePerNight,
         status: 'available',
         maintenance_note: r.maintenanceNote || null,
+        wilaya: r.wilaya || null,
+        commune: r.commune || null,
+        secteur: r.secteur || null,
+        description: r.description || null,
+        property_type: r.propertyType || 'rental',
+        owner_client_id: r.ownerClientId || null,
+        sale_price: r.salePrice ?? null,
+        purchase_price: r.purchasePrice ?? null,
       })
       .select()
       .single();
-    if (error || !data) return;
+    if (error || !data) {
+      console.error('addRoom failed:', error);
+      return null;
+    }
     const room: Room = {
       ...r,
       id: (data as Record<string, unknown>).id as string,
       status: 'available',
     };
     set((s) => ({ rooms: [...s.rooms, room] }));
+    return room;
   },
 
   updateRoom: async (id, patch) => {
     const dbPatch: Record<string, unknown> = {};
     if (patch.name !== undefined) dbPatch.name = patch.name;
     if (patch.capacity !== undefined) dbPatch.capacity = patch.capacity;
-    if (patch.floorId !== undefined) dbPatch.floor_id = patch.floorId;
-    if (patch.categoryId !== undefined) dbPatch.category_id = patch.categoryId;
+    if (patch.floorId !== undefined) dbPatch.floor_id = patch.floorId || null;
+    if (patch.categoryId !== undefined) dbPatch.category_id = patch.categoryId || null;
     if (patch.pricePerNight !== undefined) dbPatch.price_per_night = patch.pricePerNight;
     if (patch.status !== undefined) dbPatch.status = patch.status;
     if (patch.maintenanceNote !== undefined) dbPatch.maintenance_note = patch.maintenanceNote || null;
+    if (patch.wilaya !== undefined) dbPatch.wilaya = patch.wilaya || null;
+    if (patch.commune !== undefined) dbPatch.commune = patch.commune || null;
+    if (patch.secteur !== undefined) dbPatch.secteur = patch.secteur || null;
+    if (patch.description !== undefined) dbPatch.description = patch.description || null;
+    if (patch.propertyType !== undefined) dbPatch.property_type = patch.propertyType;
+    if (patch.ownerClientId !== undefined) dbPatch.owner_client_id = patch.ownerClientId || null;
+    if (patch.salePrice !== undefined) dbPatch.sale_price = patch.salePrice ?? null;
+    if (patch.purchasePrice !== undefined) dbPatch.purchase_price = patch.purchasePrice ?? null;
     await supabase.from('rooms').update(dbPatch).eq('id', id);
     set((s) => ({ rooms: s.rooms.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
   },
@@ -1060,43 +1204,58 @@ export const useApp = create<AppState>()((set, get) => ({
     // Ideal solution is a server-side Edge Function, but signUp works for
     // internal deployments where email confirmation is disabled in Supabase Auth settings.
     if (w.hasAccount && w.account && w.account.email && w.account.password) {
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: w.account.email,
-        password: w.account.password,
-        options: {
-          data: {
-            name: w.name,
-            role: 'worker',
-            username: w.account.username,
-            worker_id: newId, // so a handle_new_user trigger can link it directly
+      // signUp() replaces the ACTIVE session with the newly-created worker's
+      // session. Capture the admin's session first so we can restore it after,
+      // otherwise creating a worker silently logs the admin out (and back in as
+      // the worker). Restored in the `finally` below regardless of outcome.
+      const { data: { session: adminSession } } = await supabase.auth.getSession();
+      try {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: w.account.email,
+          password: w.account.password,
+          options: {
+            data: {
+              name: w.name,
+              role: 'worker',
+              username: w.account.username,
+              worker_id: newId, // so a handle_new_user trigger can link it directly
+            },
           },
-        },
-      });
+        });
 
-      if (signUpError) {
-        console.error('Error creating worker auth account:', signUpError);
-      } else if (signUpData.user) {
-        // A `handle_new_user` trigger may already have created this profile row,
-        // so UPSERT (not INSERT) to avoid a 409 conflict and make sure worker_id
-        // is written onto the existing row.
-        const { error: profileError } = await supabase.from('profiles').upsert(
-          {
-            id: signUpData.user.id,
-            role: 'worker',
-            name: w.name,
-            username: w.account.username,
-            email: w.account.email,
-            worker_id: newId,
-          },
-          { onConflict: 'id' },
-        );
-        if (profileError) console.error('Worker profile upsert failed:', profileError);
-        // auth_user_id is the reliable link the app matches permissions on.
-        const { error: linkError } = await supabase
-          .from('workers')
-          .update({ auth_user_id: signUpData.user.id })
-          .eq('id', newId);
-        if (linkError) console.error('Worker auth_user_id link failed:', linkError);
+        if (signUpError) {
+          console.error('Error creating worker auth account:', signUpError);
+        } else if (signUpData.user) {
+          // A `handle_new_user` trigger may already have created this profile row,
+          // so UPSERT (not INSERT) to avoid a 409 conflict and make sure worker_id
+          // is written onto the existing row.
+          const { error: profileError } = await supabase.from('profiles').upsert(
+            {
+              id: signUpData.user.id,
+              role: 'worker',
+              name: w.name,
+              username: w.account.username,
+              email: w.account.email,
+              worker_id: newId,
+            },
+            { onConflict: 'id' },
+          );
+          if (profileError) console.error('Worker profile upsert failed:', profileError);
+          // auth_user_id is the reliable link the app matches permissions on.
+          const { error: linkError } = await supabase
+            .from('workers')
+            .update({ auth_user_id: signUpData.user.id })
+            .eq('id', newId);
+          if (linkError) console.error('Worker auth_user_id link failed:', linkError);
+        }
+      } finally {
+        // Put the admin back — keeps them logged in after creating the worker.
+        if (adminSession) {
+          await supabase.auth.setSession({
+            access_token: adminSession.access_token,
+            refresh_token: adminSession.refresh_token,
+          });
+        }
       }
     }
 
@@ -1373,6 +1532,352 @@ export const useApp = create<AppState>()((set, get) => ({
     set((s) => ({ cashTransactions: [tx, ...s.cashTransactions] }));
   },
 
+  // ── MEDIATORS ────────────────────────────────────────────────────────────
+
+  addMediator: async (m) => {
+    const today = todayISO();
+    const { data, error } = await supabase
+      .from('mediators')
+      .insert({
+        first_name: m.firstName,
+        last_name: m.lastName,
+        phone: m.phone,
+        phone2: m.phone2 || null,
+        email: m.email || null,
+        address: m.address || null,
+        city: m.city || null,
+        cin: m.cin || null,
+        notes: m.notes || null,
+      })
+      .select()
+      .single();
+    if (error || !data) throw new Error(error?.message ?? 'Failed to add mediator');
+    const mediator: Mediator = {
+      ...m,
+      id: (data as Record<string, unknown>).id as string,
+      payments: [],
+      createdAt: today,
+    };
+    set((s) => ({ mediators: [mediator, ...s.mediators] }));
+    return mediator;
+  },
+
+  updateMediator: async (id, patch) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.firstName !== undefined) dbPatch.first_name = patch.firstName;
+    if (patch.lastName !== undefined) dbPatch.last_name = patch.lastName;
+    if (patch.phone !== undefined) dbPatch.phone = patch.phone;
+    if (patch.phone2 !== undefined) dbPatch.phone2 = patch.phone2 || null;
+    if (patch.email !== undefined) dbPatch.email = patch.email || null;
+    if (patch.address !== undefined) dbPatch.address = patch.address || null;
+    if (patch.city !== undefined) dbPatch.city = patch.city || null;
+    if (patch.cin !== undefined) dbPatch.cin = patch.cin || null;
+    if (patch.notes !== undefined) dbPatch.notes = patch.notes || null;
+    if (Object.keys(dbPatch).length > 0) {
+      await supabase.from('mediators').update(dbPatch).eq('id', id);
+    }
+    set((s) => ({ mediators: s.mediators.map((m) => (m.id === id ? { ...m, ...patch } : m)) }));
+  },
+
+  deleteMediator: async (id) => {
+    await supabase.from('mediators').delete().eq('id', id);
+    set((s) => ({ mediators: s.mediators.filter((m) => m.id !== id) }));
+  },
+
+  addMediatorPayment: async (mediatorId, amount, note) => {
+    const { data } = await supabase
+      .from('mediator_payments')
+      .insert({ mediator_id: mediatorId, amount, date: todayISO(), note: note || null })
+      .select()
+      .single();
+    if (!data) return null;
+    const row = data as Record<string, unknown>;
+    const payment: MediatorPayment = {
+      id: row.id as string,
+      amount: row.amount as number,
+      date: row.date as string,
+      note: (row.note as string) || undefined,
+    };
+    set((s) => ({
+      mediators: s.mediators.map((m) =>
+        m.id === mediatorId ? { ...m, payments: [...m.payments, payment] } : m,
+      ),
+    }));
+    return payment;
+  },
+
+  // ── SALES (VENTES) ───────────────────────────────────────────────────────
+
+  addSale: async (sale) => {
+    const code = nextCode(get().sales, 'VEN');
+    const today = todayISO();
+    const status = settleStatus(sale.price, sale.payments);
+
+    const { data, error } = await supabase
+      .from('sales')
+      .insert({
+        code,
+        room_id: sale.roomId || null,
+        client_id: sale.clientId,
+        mediator_id: sale.mediatorId || null,
+        commission_type: sale.commissionType,
+        commission_percent: sale.commissionPercent ?? null,
+        mediator_commission: sale.mediatorCommission,
+        price: sale.price,
+        date: sale.date,
+        time: sale.time,
+        status,
+        notes: sale.notes || null,
+      })
+      .select()
+      .single();
+    if (error || !data) {
+      console.error('addSale failed:', error);
+      return null;
+    }
+    const saleId = (data as Record<string, unknown>).id as string;
+
+    let payments: Payment[] = [];
+    if (sale.payments.length > 0) {
+      const { data: payData } = await supabase
+        .from('sale_payments')
+        .insert(
+          sale.payments.map((p) => ({
+            sale_id: saleId,
+            amount: p.amount,
+            date: p.date,
+            note: p.note || null,
+          })),
+        )
+        .select();
+      if (payData) payments = (payData as Record<string, unknown>[]).map(dbToPaymentRow);
+    }
+
+    const newSale: Sale = { ...sale, id: saleId, code, payments, status, createdAt: today };
+    set((s) => ({ sales: [newSale, ...s.sales] }));
+    return newSale;
+  },
+
+  updateSale: async (id, patch) => {
+    const current = get().sales.find((x) => x.id === id);
+
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.roomId !== undefined) dbPatch.room_id = patch.roomId || null;
+    if (patch.clientId !== undefined) dbPatch.client_id = patch.clientId;
+    if (patch.mediatorId !== undefined) dbPatch.mediator_id = patch.mediatorId || null;
+    if (patch.commissionType !== undefined) dbPatch.commission_type = patch.commissionType;
+    if (patch.commissionPercent !== undefined) dbPatch.commission_percent = patch.commissionPercent ?? null;
+    if (patch.mediatorCommission !== undefined) dbPatch.mediator_commission = patch.mediatorCommission;
+    if (patch.price !== undefined) dbPatch.price = patch.price;
+    if (patch.date !== undefined) dbPatch.date = patch.date;
+    if (patch.time !== undefined) dbPatch.time = patch.time;
+    if (patch.notes !== undefined) dbPatch.notes = patch.notes || null;
+
+    // Full sync of the payment set when the patch carries one (same rationale
+    // as reservations: the list in the patch is authoritative).
+    let syncedPayments: Payment[] | undefined;
+    if (patch.payments !== undefined) {
+      await supabase.from('sale_payments').delete().eq('sale_id', id);
+      if (patch.payments.length > 0) {
+        const { data: payData } = await supabase
+          .from('sale_payments')
+          .insert(
+            patch.payments.map((p) => ({
+              sale_id: id,
+              amount: p.amount,
+              date: p.date,
+              note: p.note || null,
+            })),
+          )
+          .select();
+        syncedPayments = payData
+          ? (payData as Record<string, unknown>[]).map(dbToPaymentRow)
+          : patch.payments;
+      } else {
+        syncedPayments = [];
+      }
+    }
+
+    const effTotal = patch.price ?? current?.price ?? 0;
+    const effPayments = syncedPayments ?? current?.payments ?? [];
+    const status = settleStatus(effTotal, effPayments);
+    if (status !== current?.status) dbPatch.status = status;
+
+    if (Object.keys(dbPatch).length > 0) {
+      await supabase.from('sales').update(dbPatch).eq('id', id);
+    }
+
+    set((s) => ({
+      sales: s.sales.map((x) => {
+        if (x.id !== id) return x;
+        const merged = { ...x, ...patch };
+        if (syncedPayments !== undefined) merged.payments = syncedPayments;
+        merged.status = settleStatus(merged.price, merged.payments);
+        return merged;
+      }),
+    }));
+  },
+
+  deleteSale: async (id) => {
+    await supabase.from('sales').delete().eq('id', id);
+    set((s) => ({ sales: s.sales.filter((x) => x.id !== id) }));
+  },
+
+  addSalePayment: async (saleId, amount, note) => {
+    const { data } = await supabase
+      .from('sale_payments')
+      .insert({ sale_id: saleId, amount, date: todayISO(), note: note || null })
+      .select()
+      .single();
+    if (!data) return null;
+    const payment = dbToPaymentRow(data as Record<string, unknown>);
+
+    const current = get().sales.find((x) => x.id === saleId);
+    if (current) {
+      const payments = [...current.payments, payment];
+      const status = settleStatus(current.price, payments);
+      if (status !== current.status) {
+        await supabase.from('sales').update({ status }).eq('id', saleId);
+      }
+      set((s) => ({
+        sales: s.sales.map((x) => (x.id === saleId ? { ...x, payments, status } : x)),
+      }));
+    }
+    return payment;
+  },
+
+  // ── PURCHASES (ACHATS) ───────────────────────────────────────────────────
+
+  addPurchase: async (purchase) => {
+    const code = nextCode(get().purchases, 'ACH');
+    const today = todayISO();
+    const status = settleStatus(purchase.purchasePrice, purchase.payments);
+
+    const { data, error } = await supabase
+      .from('purchases')
+      .insert({
+        code,
+        room_id: purchase.roomId || null,
+        client_id: purchase.clientId,
+        purchase_price: purchase.purchasePrice,
+        sale_price: purchase.salePrice,
+        date: purchase.date,
+        time: purchase.time,
+        status,
+        notes: purchase.notes || null,
+      })
+      .select()
+      .single();
+    if (error || !data) {
+      console.error('addPurchase failed:', error);
+      return null;
+    }
+    const purchaseId = (data as Record<string, unknown>).id as string;
+
+    let payments: Payment[] = [];
+    if (purchase.payments.length > 0) {
+      const { data: payData } = await supabase
+        .from('purchase_payments')
+        .insert(
+          purchase.payments.map((p) => ({
+            purchase_id: purchaseId,
+            amount: p.amount,
+            date: p.date,
+            note: p.note || null,
+          })),
+        )
+        .select();
+      if (payData) payments = (payData as Record<string, unknown>[]).map(dbToPaymentRow);
+    }
+
+    const newPurchase: Purchase = { ...purchase, id: purchaseId, code, payments, status, createdAt: today };
+    set((s) => ({ purchases: [newPurchase, ...s.purchases] }));
+    return newPurchase;
+  },
+
+  updatePurchase: async (id, patch) => {
+    const current = get().purchases.find((x) => x.id === id);
+
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.roomId !== undefined) dbPatch.room_id = patch.roomId || null;
+    if (patch.clientId !== undefined) dbPatch.client_id = patch.clientId;
+    if (patch.purchasePrice !== undefined) dbPatch.purchase_price = patch.purchasePrice;
+    if (patch.salePrice !== undefined) dbPatch.sale_price = patch.salePrice;
+    if (patch.date !== undefined) dbPatch.date = patch.date;
+    if (patch.time !== undefined) dbPatch.time = patch.time;
+    if (patch.notes !== undefined) dbPatch.notes = patch.notes || null;
+
+    let syncedPayments: Payment[] | undefined;
+    if (patch.payments !== undefined) {
+      await supabase.from('purchase_payments').delete().eq('purchase_id', id);
+      if (patch.payments.length > 0) {
+        const { data: payData } = await supabase
+          .from('purchase_payments')
+          .insert(
+            patch.payments.map((p) => ({
+              purchase_id: id,
+              amount: p.amount,
+              date: p.date,
+              note: p.note || null,
+            })),
+          )
+          .select();
+        syncedPayments = payData
+          ? (payData as Record<string, unknown>[]).map(dbToPaymentRow)
+          : patch.payments;
+      } else {
+        syncedPayments = [];
+      }
+    }
+
+    const effTotal = patch.purchasePrice ?? current?.purchasePrice ?? 0;
+    const effPayments = syncedPayments ?? current?.payments ?? [];
+    const status = settleStatus(effTotal, effPayments);
+    if (status !== current?.status) dbPatch.status = status;
+
+    if (Object.keys(dbPatch).length > 0) {
+      await supabase.from('purchases').update(dbPatch).eq('id', id);
+    }
+
+    set((s) => ({
+      purchases: s.purchases.map((x) => {
+        if (x.id !== id) return x;
+        const merged = { ...x, ...patch };
+        if (syncedPayments !== undefined) merged.payments = syncedPayments;
+        merged.status = settleStatus(merged.purchasePrice, merged.payments);
+        return merged;
+      }),
+    }));
+  },
+
+  deletePurchase: async (id) => {
+    await supabase.from('purchases').delete().eq('id', id);
+    set((s) => ({ purchases: s.purchases.filter((x) => x.id !== id) }));
+  },
+
+  addPurchasePayment: async (purchaseId, amount, note) => {
+    const { data } = await supabase
+      .from('purchase_payments')
+      .insert({ purchase_id: purchaseId, amount, date: todayISO(), note: note || null })
+      .select()
+      .single();
+    if (!data) return null;
+    const payment = dbToPaymentRow(data as Record<string, unknown>);
+
+    const current = get().purchases.find((x) => x.id === purchaseId);
+    if (current) {
+      const payments = [...current.payments, payment];
+      const status = settleStatus(current.purchasePrice, payments);
+      if (status !== current.status) {
+        await supabase.from('purchases').update({ status }).eq('id', purchaseId);
+      }
+      set((s) => ({
+        purchases: s.purchases.map((x) => (x.id === purchaseId ? { ...x, payments, status } : x)),
+      }));
+    }
+    return payment;
+  },
+
   // ── SETTINGS / DATA ───────────────────────────────────────────────────────
 
   updateStoreInfo: async (patch) => {
@@ -1410,6 +1915,9 @@ export const useApp = create<AppState>()((set, get) => ({
       expenseCategories: s.expenseCategories,
       maintenances: s.maintenances,
       cashTransactions: s.cashTransactions,
+      mediators: s.mediators,
+      sales: s.sales,
+      purchases: s.purchases,
       roles: s.roles,
     };
     return JSON.stringify(snapshot, null, 2);
@@ -1431,6 +1939,9 @@ export const useApp = create<AppState>()((set, get) => ({
         expenseCategories: d.expenseCategories ?? [],
         maintenances: d.maintenances ?? [],
         cashTransactions: d.cashTransactions ?? [],
+        mediators: d.mediators ?? [],
+        sales: d.sales ?? [],
+        purchases: d.purchases ?? [],
         roles: d.roles ?? [],
       });
       return true;
