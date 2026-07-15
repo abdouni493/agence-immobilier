@@ -59,8 +59,13 @@ function ResidenceSettings() {
 
   const onLogo = async (file: File | undefined) => {
     if (!file) return;
-    const url = await uploadImage('logos', file, 'residence/');
-    set('logo', url);
+    try {
+      const url = await uploadImage('logos', file, 'residence/');
+      set('logo', url);
+      toast.success(t('settings.logoLoaded'));
+    } catch {
+      toast.error(t('toast.error'));
+    }
   };
 
   const save = async () => {
@@ -124,8 +129,12 @@ function AccountSettings() {
 
   const onAvatar = async (file: File | undefined) => {
     if (!file) return;
-    const url = await uploadImage('avatars', file, `users/${user?.id}/`);
-    setAvatar(url);
+    try {
+      const url = await uploadImage('avatars', file, `users/${user?.id}/`);
+      setAvatar(url);
+    } catch {
+      toast.error(t('toast.error'));
+    }
   };
 
   const saveProfile = async () => {

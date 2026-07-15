@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS public.rooms (
   property_type    text NOT NULL DEFAULT 'rental'
                      CHECK (property_type = ANY (ARRAY['rental'::text, 'sale'::text])),
   owner_client_id  uuid,
+  owner_name       text,
+  owner_phone      text,
+  mediator_id      uuid,
   sale_price       numeric,
   purchase_price   numeric,
   created_at       timestamptz NOT NULL DEFAULT now(),
@@ -97,6 +100,7 @@ CREATE TABLE IF NOT EXISTS public.rooms (
   CONSTRAINT rooms_floor_id_fkey        FOREIGN KEY (floor_id)        REFERENCES public.floors(id)     ON DELETE SET NULL,
   CONSTRAINT rooms_category_id_fkey     FOREIGN KEY (category_id)     REFERENCES public.categories(id) ON DELETE SET NULL,
   CONSTRAINT rooms_owner_client_id_fkey FOREIGN KEY (owner_client_id) REFERENCES public.clients(id)    ON DELETE SET NULL
+  -- NB: rooms.mediator_id FK is added after the mediators table is created (see below).
 );
 
 -- ── Maintenances (work done on a room; detail of a room) ────────────────────
@@ -296,6 +300,19 @@ CREATE TABLE IF NOT EXISTS public.mediators (
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT mediators_pkey PRIMARY KEY (id)
 );
+
+-- rooms.mediator_id references mediators (added here so mediators exists first).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'rooms_mediator_id_fkey' AND table_name = 'rooms'
+  ) THEN
+    ALTER TABLE public.rooms
+      ADD CONSTRAINT rooms_mediator_id_fkey
+      FOREIGN KEY (mediator_id) REFERENCES public.mediators(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.mediator_payments (
   id          uuid NOT NULL DEFAULT gen_random_uuid(),

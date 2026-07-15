@@ -5,12 +5,14 @@ import { PanelLeftOpen } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useI18n } from '@/i18n';
+import { useApp } from '@/store/appStore';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarPinned, setSidebarPinned] = useState(true);
   const { dir } = useI18n();
+  const logo = useApp((s) => s.storeInfo.logo);
 
   const handleNavigate = () => {
     setMobileOpen(false);
@@ -19,12 +21,23 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
+      {/* Residence logo watermark — subtle brand background behind every page */}
+      {logo && (
+        <div aria-hidden className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center overflow-hidden">
+          <img
+            src={logo}
+            alt=""
+            className="w-[min(72vw,760px)] max-w-none select-none object-contain opacity-[0.04]"
+          />
+        </div>
+      )}
+
       {/* Desktop sidebar with animation */}
       <AnimatePresence initial={false}>
         {sidebarOpen && (
           <motion.aside
             key="desktop-sidebar"
-            className="hidden lg:block w-[260px] shrink-0 overflow-hidden"
+            className="relative z-10 hidden lg:block w-[260px] shrink-0 overflow-hidden"
             initial={{ x: -260, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -260, opacity: 0 }}
@@ -92,7 +105,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       )}
 
       {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="relative z-10 flex-1 flex flex-col min-w-0">
         <Header onMenu={() => setMobileOpen(true)} />
         <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
           <div className="mx-auto max-w-7xl">{children}</div>

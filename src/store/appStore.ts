@@ -81,6 +81,9 @@ function dbToRoom(row: Record<string, unknown>): Room {
     description: (row.description as string) || undefined,
     propertyType: (row.property_type as Room['propertyType']) || 'rental',
     ownerClientId: (row.owner_client_id as string) || undefined,
+    ownerName: (row.owner_name as string) || undefined,
+    ownerPhone: (row.owner_phone as string) || undefined,
+    mediatorId: (row.mediator_id as string) || undefined,
     salePrice: row.sale_price != null ? (row.sale_price as number) : undefined,
     purchasePrice: row.purchase_price != null ? (row.purchase_price as number) : undefined,
   };
@@ -804,6 +807,9 @@ export const useApp = create<AppState>()((set, get) => ({
         description: r.description || null,
         property_type: r.propertyType || 'rental',
         owner_client_id: r.ownerClientId || null,
+        owner_name: r.ownerName || null,
+        owner_phone: r.ownerPhone || null,
+        mediator_id: r.mediatorId || null,
         sale_price: r.salePrice ?? null,
         purchase_price: r.purchasePrice ?? null,
       })
@@ -837,6 +843,9 @@ export const useApp = create<AppState>()((set, get) => ({
     if (patch.description !== undefined) dbPatch.description = patch.description || null;
     if (patch.propertyType !== undefined) dbPatch.property_type = patch.propertyType;
     if (patch.ownerClientId !== undefined) dbPatch.owner_client_id = patch.ownerClientId || null;
+    if (patch.ownerName !== undefined) dbPatch.owner_name = patch.ownerName || null;
+    if (patch.ownerPhone !== undefined) dbPatch.owner_phone = patch.ownerPhone || null;
+    if (patch.mediatorId !== undefined) dbPatch.mediator_id = patch.mediatorId || null;
     if (patch.salePrice !== undefined) dbPatch.sale_price = patch.salePrice ?? null;
     if (patch.purchasePrice !== undefined) dbPatch.purchase_price = patch.purchasePrice ?? null;
     await supabase.from('rooms').update(dbPatch).eq('id', id);

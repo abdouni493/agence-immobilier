@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   CalendarCheck, Plus, CalendarRange, Eye, Pencil, Printer, CreditCard, User, Phone,
   Building2, CalendarDays, Wallet, Trash2, CheckCircle2, PlayCircle,
-  Mail, MapPin, Clock, ShieldCheck, DollarSign, FileText, Hourglass
+  Mail, MapPin, Clock, ShieldCheck, DollarSign, FileText, Hourglass,
+  FileSignature, Receipt, ChevronRight,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -27,8 +28,10 @@ import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, formatDateLong, rangesOverlap, todayISO, addDaysISO, monthKey, nightsBetween } from '@/lib/utils';
 import { useToday } from '@/lib/useToday';
 import { clientName, reservationRoomLabels, clientById } from '@/lib/lookups';
-import { buildInvoiceHTML, buildReservationPaymentReceiptHTML, printHTML } from '@/lib/print';
+import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVersementHTML, printHTML } from '@/lib/print';
 import type { Reservation, Payment } from '@/types';
+
+type PrintKind = 'contract' | 'versement';
 
 type Period = 'today' | 'week' | 'month' | 'all';
 type StatusFilter = 'all' | 'pending' | 'active' | 'paid' | 'debt' | 'cancelled';
@@ -63,6 +66,7 @@ export default function Reservations() {
   const [deleteOne, setDeleteOne] = useState<Reservation | null>(null);
   const [clotureFor, setClotureFor] = useState<Reservation | null>(null);
   const [activateFor, setActivateFor] = useState<Reservation | null>(null);
+  const [printChoice, setPrintChoice] = useState<Reservation | null>(null);
 
   // Live local date — auto-updates at midnight / on window focus so the
   // activation & closure buttons unlock without reloading the page.
@@ -132,7 +136,13 @@ export default function Reservations() {
 
   const openCreate = () => { setEditing(null); setWizardOpen(true); };
   const openEdit = (r: Reservation) => { setEditing(r); setWizardOpen(true); };
-  const print = (r: Reservation) => printHTML(`${r.code}`, buildInvoiceHTML(data, r, storeInfo));
+  // Printing a rental first asks the user which document to produce.
+  const askPrint = (r: Reservation) => setPrintChoice(r);
+  const doPrint = (r: Reservation, kind: PrintKind) => {
+    if (kind === 'contract') printHTML(`${r.code}-contrat`, buildRentalContractHTML(data, r, storeInfo));
+    else printHTML(`${r.code}-versement`, buildVersementHTML(data, r, storeInfo));
+    setPrintChoice(null);
+  };
 
   const handleActivate = async () => {
     if (!activateFor) return;
@@ -334,7 +344,7 @@ export default function Reservations() {
                       )}
                       {can(perms, 'reservations', 'print') && (
                         <button
-                          onClick={() => print(r)}
+                          onClick={() => askPrint(r)}
                           className="btn-card-action btn-action-print"
                           title={t('common.print')}
                         >
@@ -392,16 +402,21 @@ export default function Reservations() {
 
       {wizardOpen && <ReservationWizard open={wizardOpen} editing={editing} onClose={() => { setWizardOpen(false); setEditing(null); }} />}
       <CalendarTimeline open={calendarOpen} onClose={() => setCalendarOpen(false)} onSelect={(r) => { setCalendarOpen(false); setDetail(r); }} />
-      <DetailModal reservation={detail} onClose={() => setDetail(null)} onPrint={print} onPay={(r) => { setDetail(null); setPayFor(r); }} data={data} lang={lang} />
+      <DetailModal reservation={detail} onClose={() => setDetail(null)} onPrint={askPrint} onPay={(r) => { setDetail(null); setPayFor(r); }} data={data} lang={lang} />
       <PaymentModal reservation={payFor} onClose={() => setPayFor(null)} />
       <ClotureModal reservation={clotureFor} onClose={() => setClotureFor(null)} />
+      <PrintChoiceModal
+        reservation={printChoice}
+        onClose={() => setPrintChoice(null)}
+        onPick={(kind) => { if (printChoice) doPrint(printChoice, kind); }}
+      />
 
       {/* Single delete confirm */}
       <ConfirmDialog
         open={!!deleteOne}
         onClose={() => setDeleteOne(null)}
         onConfirm={handleDeleteOne}
-        title="Supprimer la réservation"
+        title="Supprimer la location"
         message={`Supprimer ${deleteOne?.code} ? Cette action est irréversible.`}
       />
 
@@ -411,7 +426,7 @@ export default function Reservations() {
         onClose={() => setActivateFor(null)}
         onConfirm={handleActivate}
         title={t('res.activate')}
-        message={`Activer la réservation ${activateFor?.code} et passer son statut à "En cours" ?`}
+        message={`Activer la location ${activateFor?.code} et passer son statut à "En cours" ?`}
       />
     </div>
   );
@@ -498,7 +513,7 @@ function ClotureModal({ reservation, onClose }: { reservation: Reservation | nul
         <div className="space-y-4">
           {/* Reservation summary */}
           <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
-            <p className="text-xs font-bold text-ink-muted uppercase mb-2">Résumé de la réservation</p>
+            <p className="text-xs font-bold text-ink-muted uppercase mb-2">Résumé de la location</p>
             <div className="flex justify-between text-sm">
               <span className="text-ink-secondary">Client</span>
               <span className="font-semibold">{clientName(data, r.clientId)}</span>
@@ -572,7 +587,7 @@ function ClotureModal({ reservation, onClose }: { reservation: Reservation | nul
           <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
             <p className="text-xs font-bold text-ink-muted uppercase mb-2">Détail financier</p>
             <div className="flex justify-between text-sm">
-              <span className="text-ink-secondary">Total réservation</span>
+              <span className="text-ink-secondary">Total location</span>
               <span className="font-semibold">{formatDA(r.total)}</span>
             </div>
             {lateNum > 0 && (
@@ -989,5 +1004,41 @@ function PaymentModal({ reservation, onClose }: { reservation: Reservation | nul
         message={t('sales.askPrintPayment')}
       />
     </>
+  );
+}
+
+function PrintChoiceModal({
+  reservation, onClose, onPick,
+}: {
+  reservation: Reservation | null;
+  onClose: () => void;
+  onPick: (kind: PrintKind) => void;
+}) {
+  const { t } = useI18n();
+  const options: { kind: PrintKind; icon: React.ReactNode; title: string; desc: string; tone: string }[] = [
+    { kind: 'contract', icon: <FileSignature size={22} />, title: t('res.printContract'), desc: t('res.printContractDesc'), tone: 'from-sky-500 to-blue-600' },
+    { kind: 'versement', icon: <Receipt size={22} />, title: t('res.printVersement'), desc: t('res.printVersementDesc'), tone: 'from-emerald-500 to-teal-600' },
+  ];
+  return (
+    <Modal open={!!reservation} onClose={onClose} title={t('res.printChoiceTitle')} subtitle={reservation?.code} size="sm">
+      <div className="space-y-3">
+        {options.map((o) => (
+          <button
+            key={o.kind}
+            onClick={() => { onPick(o.kind); onClose(); }}
+            className="group flex w-full items-center gap-4 rounded-2xl border-2 border-slate-200 bg-white p-4 text-start transition-all hover:border-brand-400 hover:bg-brand-50 hover:shadow-sm active:scale-[0.99]"
+          >
+            <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${o.tone} text-white shadow-md`}>
+              {o.icon}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-ink-primary">{o.title}</span>
+              <span className="block text-xs text-ink-muted mt-0.5">{o.desc}</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 rtl:rotate-180" />
+          </button>
+        ))}
+      </div>
+    </Modal>
   );
 }

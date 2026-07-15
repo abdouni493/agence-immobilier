@@ -89,6 +89,9 @@ export interface Room {
   description?: string;
   propertyType?: PropertyType; // location (rental) ou vente (sale)
   ownerClientId?: string; // client qui a confié / vendu cet appartement à l'agence
+  ownerName?: string; // nom complet du propriétaire (optionnel, saisie libre)
+  ownerPhone?: string; // téléphone du propriétaire (optionnel, saisie libre)
+  mediatorId?: string; // médiateur associé à cet appartement (optionnel)
   salePrice?: number; // prix de vente affiché
   purchasePrice?: number; // prix d'achat par l'agence
 }

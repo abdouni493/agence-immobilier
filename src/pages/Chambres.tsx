@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BedDouble, Plus, Pencil, Trash2, Wrench, Eye, Layers, Tag, Users, Check, X, Wallet,
-  MapPin, UserPlus, Home, Tags,
+  MapPin, UserPlus, Home, Tags, Handshake,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -15,12 +15,12 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TextField, SelectField, SegmentedControl, TextArea } from '@/components/ui/Field';
-import { ClientForm } from '@/components/forms/ClientForm';
+import type { MediatorFormData } from '@/components/forms/MediatorForm';
 import { effectiveRoomStatus, reservationPaid } from '@/store/selectors';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, todayISO, addDaysISO, nightsBetween, cn } from '@/lib/utils';
-import { categoryName, floorName, clientName } from '@/lib/lookups';
-import type { Room, RoomStatus, PropertyType } from '@/types';
+import { categoryName, floorName, clientName, mediatorName } from '@/lib/lookups';
+import type { Room, RoomStatus, PropertyType, Mediator } from '@/types';
 
 type Filter = 'all' | RoomStatus | 'rental' | 'sale';
 
@@ -40,6 +40,7 @@ export default function Chambres() {
   const deleteFloor = useApp((s) => s.deleteFloor);
   const addCategory = useApp((s) => s.addCategory);
   const deleteCategory = useApp((s) => s.deleteCategory);
+  const addMediator = useApp((s) => s.addMediator);
 
   const today = todayISO();
   const [filter, setFilter] = useState<Filter>('all');
@@ -137,9 +138,16 @@ export default function Chambres() {
                       {[room.wilaya, room.commune, room.secteur].filter(Boolean).join(', ')}
                     </p>
                   )}
-                  {room.ownerClientId && (
+                  {(room.ownerName || room.ownerClientId) && (
                     <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-300">
-                      <Users size={13} className="text-sky-300 shrink-0" /> {clientName(data, room.ownerClientId)}
+                      <Users size={13} className="text-sky-300 shrink-0" />
+                      {room.ownerName || clientName(data, room.ownerClientId!)}
+                      {room.ownerPhone ? ` · ${room.ownerPhone}` : ''}
+                    </p>
+                  )}
+                  {room.mediatorId && (
+                    <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-300">
+                      <Handshake size={13} className="text-amber-300 shrink-0" /> {mediatorName(data, room.mediatorId)}
                     </p>
                   )}
 
@@ -196,9 +204,10 @@ export default function Chambres() {
           room={formRoom}
           floors={floors}
           categories={categories}
-          clients={data.clients}
+          mediators={data.mediators}
           onAddFloor={addFloor}
           onAddCategory={addCategory}
+          onAddMediator={addMediator}
           onClose={() => setFormOpen(false)}
           onSave={async (payload) => {
             if (formRoom) { await updateRoom(formRoom.id, payload); toast.success(t('toast.updated')); }
@@ -248,6 +257,15 @@ export default function Chambres() {
   );
 }
 
+function Info({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wide">{label}</p>
+      <p className="text-sm font-semibold text-ink-primary truncate">{value && value !== '—' ? value : '—'}</p>
+    </div>
+  );
+}
+
 function RoomStatusBadge({ status }: { status: RoomStatus }) {
   const { t } = useI18n();
   if (status === 'available') return <Badge tone="success" dot className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">{t('rooms.available')}</Badge>;
@@ -264,20 +282,20 @@ function PropertyTypeBadge({ type }: { type: PropertyType }) {
 }
 
 function RoomFormModal({
-  room, floors, categories, clients, onAddFloor, onAddCategory, onClose, onSave,
+  room, floors, categories, mediators, onAddFloor, onAddCategory, onAddMediator, onClose, onSave,
 }: {
   room: Room | null;
   floors: { id: string; name: string }[];
   categories: { id: string; name: string }[];
-  clients: { id: string; firstName: string; lastName: string }[];
+  mediators: Mediator[];
   onAddFloor: (name: string) => void;
   onAddCategory: (name: string) => void;
+  onAddMediator: (m: MediatorFormData) => Promise<Mediator>;
   onClose: () => void;
   onSave: (payload: Omit<Room, 'id' | 'status'>) => void;
 }) {
   const { t } = useI18n();
   const toast = useToast();
-  const addClient = useApp((s) => s.addClient);
   const [name, setName] = useState(room?.name ?? '');
   const [capacity, setCapacity] = useState(String(room?.capacity ?? 1));
   const [floorId, setFloorId] = useState(room?.floorId ?? '');
@@ -289,12 +307,31 @@ function RoomFormModal({
   const [commune, setCommune] = useState(room?.commune ?? '');
   const [secteur, setSecteur] = useState(room?.secteur ?? '');
   const [description, setDescription] = useState(room?.description ?? '');
-  const [ownerClientId, setOwnerClientId] = useState(room?.ownerClientId ?? '');
+  const [ownerName, setOwnerName] = useState(room?.ownerName ?? '');
+  const [ownerPhone, setOwnerPhone] = useState(room?.ownerPhone ?? '');
+  const [mediatorId, setMediatorId] = useState(room?.mediatorId ?? '');
+  const [showMediatorInput, setShowMediatorInput] = useState(false);
+  const [newMedName, setNewMedName] = useState('');
+  const [newMedPhone, setNewMedPhone] = useState('');
   const [newFloor, setNewFloor] = useState('');
   const [newCat, setNewCat] = useState('');
   const [showFloorInput, setShowFloorInput] = useState(false);
   const [showCatInput, setShowCatInput] = useState(false);
-  const [creatingClient, setCreatingClient] = useState(false);
+
+  const createMediator = async () => {
+    if (!newMedName.trim() || !newMedPhone.trim()) return toast.error(t('login.required'));
+    const parts = newMedName.trim().split(/\s+/);
+    const firstName = parts.shift() ?? '';
+    const lastName = parts.join(' ');
+    const m = await onAddMediator({
+      firstName, lastName, phone: newMedPhone.trim(),
+      phone2: '', email: '', address: '', city: '', cin: '', notes: '',
+    });
+    setMediatorId(m.id);
+    setShowMediatorInput(false);
+    setNewMedName(''); setNewMedPhone('');
+    toast.success(t('toast.created'));
+  };
 
   const save = () => {
     if (!name.trim()) return toast.error(t('login.required'));
@@ -311,27 +348,13 @@ function RoomFormModal({
       secteur: secteur.trim() || undefined,
       description: description.trim() || undefined,
       propertyType,
-      ownerClientId: ownerClientId || undefined,
+      ownerClientId: room?.ownerClientId || undefined,
+      ownerName: ownerName.trim() || undefined,
+      ownerPhone: ownerPhone.trim() || undefined,
+      mediatorId: mediatorId || undefined,
       salePrice: salePrice ? Number(salePrice) : undefined,
     });
   };
-
-  if (creatingClient) {
-    return (
-      <Modal open onClose={onClose} title={t('clients.new')} size="lg">
-        <ClientForm
-          submitLabel={t('common.create')}
-          onCancel={() => setCreatingClient(false)}
-          onSave={async (form) => {
-            const c = await addClient(form);
-            setOwnerClientId(c.id);
-            setCreatingClient(false);
-            toast.success(t('toast.created'));
-          }}
-        />
-      </Modal>
-    );
-  }
 
   return (
     <Modal
@@ -414,17 +437,41 @@ function RoomFormModal({
           <TextArea wrapClassName="sm:col-span-2" label={t('apt.description')} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
 
-        {/* Owner client */}
+        {/* Owner (free text — optional) */}
         <div>
           <p className="text-xs font-semibold text-ink-secondary mb-1.5">{t('apt.owner')}</p>
           <p className="text-[11px] text-ink-muted mb-2">{t('apt.ownerHint')}</p>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <SelectField wrapClassName="flex-1" value={ownerClientId} onChange={(e) => setOwnerClientId(e.target.value)}>
-              <option value="">{t('apt.noOwner')}</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>)}
-            </SelectField>
-            <GradientButton variant="glass" icon={<UserPlus size={16} />} onClick={() => setCreatingClient(true)}>{t('res.newClient')}</GradientButton>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <TextField label={t('apt.ownerName')} icon={<Users size={16} />} value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder={t('apt.ownerNamePlaceholder')} />
+            <TextField label={t('apt.ownerPhone')} value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} placeholder="06 00 00 00 00" />
           </div>
+        </div>
+
+        {/* Mediator (choose existing or create new — name + phone only) */}
+        <div>
+          <p className="text-xs font-semibold text-ink-secondary mb-1.5">{t('apt.mediator')}</p>
+          <p className="text-[11px] text-ink-muted mb-2">{t('apt.mediatorHint')}</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <SelectField wrapClassName="flex-1" value={mediatorId} onChange={(e) => setMediatorId(e.target.value)}>
+              <option value="">{t('apt.noMediator')}</option>
+              {mediators.map((m) => <option key={m.id} value={m.id}>{m.firstName} {m.lastName} · {m.phone}</option>)}
+            </SelectField>
+            {!showMediatorInput && (
+              <GradientButton variant="glass" icon={<UserPlus size={16} />} onClick={() => setShowMediatorInput(true)}>{t('apt.newMediator')}</GradientButton>
+            )}
+          </div>
+          {showMediatorInput && (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <TextField label={t('apt.ownerName')} value={newMedName} onChange={(e) => setNewMedName(e.target.value)} placeholder={t('apt.mediatorNamePlaceholder')} autoFocus />
+                <TextField label={t('common.phone')} value={newMedPhone} onChange={(e) => setNewMedPhone(e.target.value)} placeholder="06 00 00 00 00" />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => { setShowMediatorInput(false); setNewMedName(''); setNewMedPhone(''); }} className="grid h-9 w-9 place-items-center rounded-lg glass text-ink-secondary"><X size={16} /></button>
+                <GradientButton size="sm" icon={<Check size={16} />} onClick={createMediator}>{t('common.create')}</GradientButton>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Modal>
@@ -538,6 +585,48 @@ function RoomDetailsModal({
     <Modal open={!!room} onClose={onClose} title={room ? `${t('nav.chambres')} ${room.name}` : ''} subtitle={room ? categoryName(data, room.categoryId) : ''} size="lg">
       {room && (
         <div className="space-y-5">
+          {/* Full apartment information */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-bold text-ink-primary flex items-center gap-1.5">
+                <Home size={15} className="text-brand-500" /> {t('apt.infoTitle')}
+              </h4>
+              <span className={cn(
+                'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+                (room.propertyType ?? 'rental') === 'sale' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700',
+              )}>
+                {(room.propertyType ?? 'rental') === 'sale' ? <Tags size={11} /> : <BedDouble size={11} />}
+                {(room.propertyType ?? 'rental') === 'sale' ? t('apt.typeSale') : t('apt.typeRental')}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
+              <Info label={t('rooms.roomName')} value={room.name} />
+              <Info label={t('common.category')} value={categoryName(data, room.categoryId)} />
+              <Info label={t('apt.etage')} value={floorName(data, room.floorId)} />
+              <Info label={t('apt.roomsNumber')} value={String(room.capacity)} />
+              <Info label={t('apt.wilaya')} value={room.wilaya} />
+              <Info label={t('apt.commune')} value={room.commune} />
+              <Info label={t('apt.secteur')} value={room.secteur} />
+              {(room.propertyType ?? 'rental') === 'sale' ? (
+                <>
+                  <Info label={t('apt.salePrice')} value={room.salePrice != null ? formatDA(room.salePrice) : undefined} />
+                  <Info label={t('purchases.purchasePrice')} value={room.purchasePrice != null ? formatDA(room.purchasePrice) : undefined} />
+                </>
+              ) : (
+                <Info label={t('rooms.pricePerNight')} value={formatDA(room.pricePerNight)} />
+              )}
+              <Info label={t('apt.ownerName')} value={room.ownerName || (room.ownerClientId ? clientName(data, room.ownerClientId) : undefined)} />
+              <Info label={t('apt.ownerPhone')} value={room.ownerPhone} />
+              <Info label={t('apt.mediator')} value={room.mediatorId ? mediatorName(data, room.mediatorId) : undefined} />
+            </div>
+            {room.description && (
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wide mb-1">{t('apt.description')}</p>
+                <p className="text-sm text-ink-secondary whitespace-pre-wrap">{room.description}</p>
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-wrap gap-3 items-end">
             <TextField label={t('common.from')} type="date" value={from} onChange={(e) => setFrom(e.target.value)} wrapClassName="flex-1 min-w-[140px]" />
             <TextField label={t('common.to')} type="date" value={to} onChange={(e) => setTo(e.target.value)} wrapClassName="flex-1 min-w-[140px]" />

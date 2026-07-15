@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { fadeInUp } from '@/animations';
 import { GRADIENT_CLASS, type GradientKey } from '@/design-tokens';
 import { AnimatedNumber } from './AnimatedCounter';
@@ -14,15 +15,25 @@ interface Props {
   suffix?: string;
   subtitle?: ReactNode;
   textValue?: string; // for non-numeric values
+  to?: string; // when set, the whole card navigates on click
 }
 
-export function StatsCard({ label, value, icon, gradient, format, suffix, subtitle, textValue }: Props) {
+export function StatsCard({ label, value, icon, gradient, format, suffix, subtitle, textValue, to }: Props) {
+  const navigate = useNavigate();
+  const clickable = !!to;
   return (
     <motion.div
       variants={fadeInUp}
       whileHover={{ scale: 1.02, y: -3 }}
       transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-      className="relative overflow-hidden glass rounded-2xl border border-slate-200 p-5 shadow-card group"
+      onClick={clickable ? () => navigate(to!) : undefined}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(to!); } } : undefined}
+      className={cn(
+        'relative overflow-hidden glass rounded-2xl border border-slate-200 p-5 shadow-card group',
+        clickable && 'cursor-pointer transition-shadow hover:border-brand-300 hover:shadow-lg focus-ring',
+      )}
     >
       {/* Decorative gradient blob */}
       <div

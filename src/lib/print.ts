@@ -59,6 +59,29 @@ export const PRINT_STYLES = `
   .cachet { border: 2px dashed #0284c7; color: #0369a1; border-radius: 12px; padding: 12px 20px; transform: rotate(-5deg); text-align: center; font-weight: 700; font-size: 12px; }
   .cachet small { display: block; font-weight: 400; font-size: 10px; margin-top: 4px; }
   .foot { margin-top: 24px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+
+  /* ── Contract-specific ── */
+  .doc-title-band { text-align: center; margin: 6px 0 18px; }
+  .doc-title-band h2 { font-size: 20px; font-weight: 900; color: #0369a1; letter-spacing: .5px; text-transform: uppercase; }
+  .doc-title-band .sub { font-size: 11px; color: #64748b; margin-top: 3px; }
+  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+  .party { border: 2px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; }
+  .party h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 7px; font-weight: 800; color: #0369a1; }
+  .party p { margin: 2px 0; line-height: 1.5; }
+  .party .role { font-size: 9.5px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+  .clauses { margin: 4px 0 8px; }
+  .clauses h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #475569; margin: 14px 0 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
+  .clauses ol { padding-left: 18px; }
+  .clauses li { font-size: 11px; color: #334155; line-height: 1.55; margin-bottom: 5px; }
+  .amount-hero { text-align: center; border: 2px solid #bbf7d0; background: #f0fdf4; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .amount-hero .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: #059669; font-weight: 800; }
+  .amount-hero .val { font-size: 30px; font-weight: 900; color: #059669; margin-top: 4px; }
+  .amount-hero .words { font-size: 11px; color: #475569; margin-top: 4px; font-style: italic; }
+  .sign-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 34px; }
+  .sign-box { text-align: center; }
+  .sign-box .who { font-size: 10.5px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .5px; }
+  .sign-box .line { margin-top: 42px; border-top: 1px solid #94a3b8; padding-top: 5px; font-size: 10px; color: #94a3b8; }
+
   @media print { body { padding: 0; } .no-print { display: none !important; } }
 `;
 
@@ -162,7 +185,7 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
         ${client?.documentType ? `<p>Pièce: ${client.documentNumber ?? '—'} (${client.documentType})</p>` : ''}
       </div>
       <div class="section green">
-        <h3>📅 Réservation</h3>
+        <h3>📅 Location</h3>
         <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
         <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
         <p><strong>Durée:</strong> ${nights} nuit(s)</p>
@@ -181,7 +204,7 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
 
     <!-- Totals -->
     <div class="totals-wrap">
-      <div class="row"><span>Total réservation</span><strong>${formatDA(r.total)}</strong></div>
+      <div class="row"><span>Total location</span><strong>${formatDA(r.total)}</strong></div>
       <div class="row"><span>Total payé</span><span class="badge-paid">${formatDA(paid)}</span></div>
       <div class="row"><span>Reste dû</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
       <div class="row grand"><span>Net à payer</span><span>${formatDA(r.total)}</span></div>
@@ -447,7 +470,7 @@ export function buildReservationPaymentReceiptHTML(
     <div class="grid2">
       ${clientSection(client)}
       <div class="section violet">
-        <h3>📋 Réservation ${r.code}</h3>
+        <h3>📋 Location ${r.code}</h3>
         <p><strong>Appartement(s):</strong> ${roomsList || '—'}</p>
         <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
         <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
@@ -455,8 +478,8 @@ export function buildReservationPaymentReceiptHTML(
       </div>
     </div>
     ${paymentsTable(r.payments)}`;
-  return receiptShell(store, r.code, 'Reçu de Paiement — Réservation', payment, infos, [
-    { label: 'Total réservation', value: formatDA(r.total) },
+  return receiptShell(store, r.code, 'Reçu de Paiement — Location', payment, infos, [
+    { label: 'Total location', value: formatDA(r.total) },
     { label: 'Total payé', value: formatDA(reservationPaid(r)), cls: 'badge-paid' },
     { label: 'Reste dû', value: formatDA(reservationRemaining(r)), cls: reservationRemaining(r) > 0 ? 'badge-debt' : 'badge-paid' },
   ]);
@@ -508,4 +531,148 @@ export function buildMediatorPaymentReceiptHTML(
     { label: 'Total payé', value: formatDA(stats.paid), cls: 'badge-paid' },
     { label: 'Reste dû', value: formatDA(stats.remaining), cls: stats.remaining > 0 ? 'badge-debt' : 'badge-paid' },
   ]);
+}
+
+// ─── Contrat de location (rental contract) ──────────────────────────────────
+
+export function buildRentalContractHTML(data: AppData, r: Reservation, store: StoreInfo): string {
+  const client = clientById(data, r.clientId);
+  const nights = nightsBetween(r.checkIn, r.checkOut);
+  const paid = reservationPaid(r);
+  const remaining = reservationRemaining(r);
+
+  const roomRows = r.rooms.map((rr) => {
+    const room = data.rooms.find((x) => x.id === rr.roomId);
+    const floor = room ? (data.floors.find((f) => f.id === room.floorId)?.name ?? '—') : '—';
+    const loc = room ? [room.wilaya, room.commune, room.secteur].filter(Boolean).join(', ') : '';
+    return `<tr>
+      <td>${room?.name ?? '—'}</td>
+      <td>${loc || '—'}</td>
+      <td>${floor}</td>
+      <td class="right">${formatDA(rr.pricePerNight)}</td>
+      <td class="right">${nights}</td>
+      <td class="right">${formatDA(rr.pricePerNight * nights)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div class="doc">
+    ${docHeader(store, r.code, `Établi le ${formatDate(r.createdAt)}`, 'Contrat de Location')}
+
+    <div class="doc-title-band">
+      <h2>Contrat de Location</h2>
+      <div class="sub">N° ${r.code} — établi le ${formatDate(r.createdAt)}</div>
+    </div>
+
+    <div class="parties">
+      <div class="party">
+        <h3>Le Bailleur / Mandataire</h3>
+        <p class="role">Agence</p>
+        <p><strong>${store.name}</strong></p>
+        ${store.address ? `<p>${store.address}</p>` : ''}
+        ${store.phone ? `<p>Tél : ${store.phone}${store.email ? ` · ${store.email}` : ''}</p>` : ''}
+        ${store.rc ? `<p>RC : ${store.rc}${store.nif ? ` · NIF : ${store.nif}` : ''}</p>` : ''}
+      </div>
+      <div class="party">
+        <h3>Le Locataire</h3>
+        <p class="role">Client</p>
+        <p><strong>${client ? `${client.firstName} ${client.lastName}` : '—'}</strong></p>
+        ${client?.phone ? `<p>Tél : ${client.phone}${client.phone2 ? ` / ${client.phone2}` : ''}</p>` : ''}
+        ${client?.address || client?.city ? `<p>${[client?.address, client?.city].filter(Boolean).join(', ')}</p>` : ''}
+        ${client?.documentType ? `<p>Pièce : ${client.documentNumber ?? '—'} (${client.documentType})</p>` : ''}
+      </div>
+    </div>
+
+    <p class="tbl-head">🏠 Bien(s) loué(s)</p>
+    <table>
+      <thead><tr><th>Appartement</th><th>Localisation</th><th>Étage</th><th class="right">Prix/nuit</th><th class="right">Nuits</th><th class="right">Sous-total</th></tr></thead>
+      <tbody>${roomRows}</tbody>
+    </table>
+
+    <div class="grid2">
+      <div class="section green">
+        <h3>📅 Durée de la location</h3>
+        <p><strong>Arrivée :</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
+        <p><strong>Départ :</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
+        <p><strong>Durée :</strong> ${nights} nuit(s)</p>
+      </div>
+      <div class="section blue">
+        <h3>💰 Conditions financières</h3>
+        <p><strong>Loyer total :</strong> ${formatDA(r.total)}</p>
+        <p><strong>Déjà versé :</strong> ${formatDA(paid)}</p>
+        <p><strong>Reste dû :</strong> <span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></p>
+      </div>
+    </div>
+
+    <div class="clauses">
+      <h4>Conditions générales</h4>
+      <ol>
+        <li>La présente location est consentie pour la période du ${formatDate(r.checkIn)} au ${formatDate(r.checkOut)}, soit ${nights} nuit(s).</li>
+        <li>Le montant total de la location s'élève à ${formatDA(r.total)}, payable selon l'échéancier convenu entre les parties.</li>
+        <li>Le locataire s'engage à occuper le bien loué paisiblement et à le restituer dans l'état où il l'a reçu.</li>
+        <li>Toute prolongation au-delà de la date de départ pourra donner lieu à une facturation supplémentaire au tarif journalier en vigueur.</li>
+        <li>Le locataire demeure responsable de toute dégradation causée au bien pendant la durée de la location.</li>
+        <li>Le présent contrat est établi en deux exemplaires originaux, un pour chaque partie.</li>
+      </ol>
+    </div>
+
+    ${paymentsTable(r.payments)}
+
+    <div class="sign-grid">
+      <div class="sign-box"><p class="who">Le Bailleur</p><div class="line">${store.name}</div></div>
+      <div class="sign-box"><p class="who">Le Locataire</p><div class="line">${client ? `${client.firstName} ${client.lastName}` : 'Signature'}</div></div>
+    </div>
+
+    <div class="foot">Document généré par ${store.name}${store.phone ? ` — ${store.phone}` : ''} — Merci de votre confiance.</div>
+  </div>`;
+}
+
+// ─── Bon de versement (payment voucher) ─────────────────────────────────────
+
+export function buildVersementHTML(data: AppData, r: Reservation, store: StoreInfo): string {
+  const client = clientById(data, r.clientId);
+  const paid = reservationPaid(r);
+  const remaining = reservationRemaining(r);
+  const nights = nightsBetween(r.checkIn, r.checkOut);
+  const roomsList = r.rooms
+    .map((rr) => data.rooms.find((x) => x.id === rr.roomId)?.name)
+    .filter(Boolean)
+    .join(', ');
+  const issueDate = r.payments[r.payments.length - 1]?.date ?? r.createdAt;
+
+  return `
+  <div class="doc">
+    ${docHeader(store, r.code, `Établi le ${formatDate(issueDate)}`, 'Bon de Versement')}
+
+    <div class="doc-title-band">
+      <h2>Bon de Versement</h2>
+      <div class="sub">N° ${r.code} — ${formatDate(issueDate)}</div>
+    </div>
+
+    <div class="amount-hero">
+      <div class="lbl">Montant total versé</div>
+      <div class="val">${formatDA(paid)}</div>
+      <div class="words">Reçu de ${client ? `${client.firstName} ${client.lastName}` : 'la part du client'} la somme ci-dessus.</div>
+    </div>
+
+    <div class="grid2">
+      ${clientSection(client, '👤 Versé par')}
+      <div class="section violet">
+        <h3>📋 Location ${r.code}</h3>
+        <p><strong>Appartement(s) :</strong> ${roomsList || '—'}</p>
+        <p><strong>Séjour :</strong> ${formatDate(r.checkIn)} → ${formatDate(r.checkOut)}</p>
+        <p><strong>Durée :</strong> ${nights} nuit(s)</p>
+      </div>
+    </div>
+
+    ${paymentsTable(r.payments)}
+
+    <div class="totals-wrap">
+      <div class="row"><span>Loyer total</span><strong>${formatDA(r.total)}</strong></div>
+      <div class="row"><span>Total versé</span><span class="badge-paid">${formatDA(paid)}</span></div>
+      <div class="row grand"><span>Reste dû</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
+    </div>
+
+    ${stampSection(store, 'client')}
+  </div>`;
 }
