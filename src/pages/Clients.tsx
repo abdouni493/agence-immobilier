@@ -91,7 +91,7 @@ export default function Clients() {
                 <motion.div key={c.id} variants={listItem} layout exit="exit">
                   <GradientCard
                     className="p-5 h-full flex flex-col border border-white/10 shadow-xl"
-                    style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                    style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                   >
                     <div className="flex items-start gap-3">
                       <div className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-white font-bold shrink-0">
@@ -113,7 +113,7 @@ export default function Clients() {
                       )}
                     </div>
 
-                    <div className="mt-4 space-y-1.5 text-sm text-slate-200 flex-1">
+                    <div className="mt-4 space-y-1.5 text-sm text-ink-secondary flex-1">
                       <p className="flex items-center gap-2"><Phone size={14} className="text-sky-300" /> {c.phone}</p>
                       {c.email && <p className="flex items-center gap-2 truncate"><Mail size={14} className="text-sky-300 shrink-0" /> <span className="truncate">{c.email}</span></p>}
                       <p className="flex items-center gap-2"><MapPin size={14} className="text-sky-300" /> {c.city || '—'}</p>

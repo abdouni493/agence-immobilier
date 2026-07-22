@@ -10,7 +10,7 @@ import { useAppData } from '@/store/hooks';
 import { useI18n } from '@/i18n';
 import {
   computeKpis, lastNMonths, monthLabel, revenueByMonth, reservationsByMonth,
-  occupancyByFloor, expensesByCategory, reservationRemaining,
+  occupancyByFloor, expensesByCategory, reservationRemaining, effectiveRoomStatus,
 } from '@/store/selectors';
 import { StatsCard } from '@/components/ui/StatsCard';
 import { SectionCard } from '@/components/ui/GradientCard';
@@ -23,7 +23,8 @@ import {
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, clamp } from '@/lib/utils';
 import { useToday } from '@/lib/useToday';
-import { clientName, reservationRoomLabels, expenseCategoryName, clientById } from '@/lib/lookups';
+import { clientName, reservationRoomLabels, expenseCategoryName, clientById, rentalPeriodOf } from '@/lib/lookups';
+import { Link } from 'react-router-dom';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
 import type { Reservation } from '@/types';
 
@@ -66,6 +67,19 @@ export default function Dashboard() {
     [data.reservations, today],
   );
   const maintRooms = useMemo(() => data.rooms.filter((r) => r.status === 'maintenance'), [data.rooms]);
+
+  // Rental apartments free today — the agency's most-asked-for list.
+  const availableRooms = useMemo(
+    () =>
+      data.rooms
+        .filter(
+          (r) =>
+            (r.propertyType ?? 'rental') === 'rental' &&
+            effectiveRoomStatus(r, data.reservations, today) === 'available',
+        )
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [data.rooms, data.reservations, today],
+  );
 
   const recentRes = data.reservations.slice(0, 5);
   const recentTx = data.cashTransactions.slice(0, 5);
@@ -188,6 +202,56 @@ export default function Dashboard() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Available apartments */}
+      <SectionCard
+        title={`${t('dash.availableApartments')} (${availableRooms.length})`}
+        icon={<BedDouble size={18} />}
+        className="mb-6"
+        action={
+          <Link to="/app/chambres" className="text-xs font-semibold text-brand-700 hover:text-brand-400">
+            {t('common.viewAll')}
+          </Link>
+        }
+      >
+        {availableRooms.length === 0 ? (
+          <p className="text-sm text-ink-secondary py-4 text-center">{t('dash.noAvailableApartments')}</p>
+        ) : (
+          <motion.div
+            variants={staggerContainer}
+            initial="initial"
+            animate="animate"
+            className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3"
+          >
+            {availableRooms.map((r) => (
+              <motion.div key={r.id} variants={listItem}>
+                <Link
+                  to="/app/chambres"
+                  className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white/5 p-3 hover:border-brand-400 hover:bg-white/10 transition-all"
+                >
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-grad-primary text-white shrink-0">
+                    <BedDouble size={17} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-ink-primary truncate">{r.name}</p>
+                    <p className="text-xs text-ink-muted truncate">
+                      {[r.commune, r.furnished ? t('apt.furnished') : t('apt.unfurnished')]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  </div>
+                  <div className="text-end shrink-0">
+                    <p className="text-sm font-bold text-emerald-600">{formatDA(r.pricePerNight)}</p>
+                    <p className="text-[10px] text-ink-muted">
+                      / {rentalPeriodOf(r) === 'month' ? t('common.monthUnit') : t('common.night')}
+                    </p>
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </SectionCard>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
@@ -357,7 +421,7 @@ function ReservationAlertGroup({
           <Icon size={14} className="relative" />
         </span>
         {t(meta.titleKey)}
-        <span className="ml-1 rounded-full bg-white/80 px-2 py-0.5 text-xs">{reservations.length}</span>
+        <span className="ml-1 rounded-full bg-white/15 px-2 py-0.5 text-xs">{reservations.length}</span>
       </div>
       <p className="mb-3 ml-9 text-[11px] text-slate-600">
         {t(type.startsWith('activate') ? 'resAlert.actionActivate' : 'resAlert.actionCheckout')}
@@ -371,7 +435,7 @@ function ReservationAlertGroup({
               key={r.id}
               variants={listItem}
               onClick={() => onSelect(r)}
-              className="text-left rounded-xl border border-white/60 bg-white/70 p-3 transition-colors cursor-pointer hover:bg-white"
+              className="text-left rounded-xl border border-white/10 bg-white/5 p-3 transition-colors cursor-pointer hover:bg-white/10"
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold text-ink-primary">{r.code}</span>

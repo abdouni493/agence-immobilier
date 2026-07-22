@@ -124,7 +124,6 @@ export function SaleWizard({
     return (q
       ? pool.filter((r) =>
           r.name.toLowerCase().includes(q) ||
-          (r.wilaya ?? '').toLowerCase().includes(q) ||
           (r.commune ?? '').toLowerCase().includes(q))
       : pool
     ).slice(0, 12);
@@ -174,9 +173,7 @@ export function SaleWizard({
       floorId: aptDraft.floorId,
       categoryId: '',
       pricePerNight: 0,
-      wilaya: aptDraft.wilaya.trim() || undefined,
       commune: aptDraft.commune.trim() || undefined,
-      secteur: aptDraft.secteur.trim() || undefined,
       description: aptDraft.description.trim() || undefined,
       propertyType: 'sale',
     });
@@ -245,7 +242,7 @@ export function SaleWizard({
         <motion.div
           key="sale-wiz"
           className="fixed inset-0 z-[100] flex flex-col"
-          style={{ background: '#f8fafc' }}
+          style={{ background: 'var(--surface-0)' }}
           initial={{ y: '100%' }}
           animate={{ y: 0 }}
           exit={{ y: '100%' }}
@@ -380,7 +377,7 @@ export function SaleWizard({
                                 <Check size={18} className="text-emerald-600" /> {room.name}
                               </p>
                               <p className="text-sm text-ink-secondary mt-0.5 flex items-center gap-1">
-                                <MapPin size={13} /> {[room.wilaya, room.commune, room.secteur].filter(Boolean).join(', ') || '—'}
+                                <MapPin size={13} /> {[room.commune].filter(Boolean).join(', ') || '—'}
                               </p>
                               {room.salePrice ? <p className="text-xs text-ink-muted mt-0.5">{t('apt.salePrice')}: {formatDA(room.salePrice)}</p> : null}
                             </div>
@@ -408,9 +405,9 @@ export function SaleWizard({
                                   </span>
                                   <span className="min-w-0 flex-1">
                                     <span className="block text-sm font-semibold text-ink-primary truncate">{r.name}</span>
-                                    <span className="block text-xs text-ink-muted truncate">{[r.wilaya, r.commune].filter(Boolean).join(', ') || '—'}</span>
+                                    <span className="block text-xs text-ink-muted truncate">{[r.commune].filter(Boolean).join(', ') || '—'}</span>
                                   </span>
-                                  <ArrowRight size={14} className="ml-auto text-slate-300 shrink-0" />
+                                  <ArrowRight size={14} className="ml-auto text-ink-muted shrink-0" />
                                 </motion.button>
                               ))}
                               {filteredApts.length === 0 && <p className="col-span-full text-center text-sm text-ink-muted py-10">{t('common.noResults')}</p>}
@@ -467,7 +464,7 @@ export function SaleWizard({
                                     <span className="block text-sm font-semibold text-ink-primary truncate">{c.firstName} {c.lastName}</span>
                                     <span className="block text-xs text-ink-muted">{c.phone}</span>
                                   </span>
-                                  <ArrowRight size={14} className="ml-auto text-slate-300 shrink-0" />
+                                  <ArrowRight size={14} className="ml-auto text-ink-muted shrink-0" />
                                 </motion.button>
                               ))}
                               {filteredClients.length === 0 && <p className="col-span-full text-center text-sm text-ink-muted py-10">{t('common.noResults')}</p>}
@@ -559,7 +556,7 @@ export function SaleWizard({
                                       <span className="block text-sm font-semibold text-ink-primary truncate">{m.firstName} {m.lastName}</span>
                                       <span className="block text-xs text-ink-muted">{m.phone}</span>
                                     </span>
-                                    <ArrowRight size={14} className="ml-auto text-slate-300 shrink-0" />
+                                    <ArrowRight size={14} className="ml-auto text-ink-muted shrink-0" />
                                   </motion.button>
                                 ))}
                                 {filteredMediators.length === 0 && <p className="col-span-full text-center text-sm text-ink-muted py-10">{t('common.noResults')}</p>}
@@ -577,7 +574,7 @@ export function SaleWizard({
                           {room ? (
                             <>
                               <p className="text-sm font-bold">{room.name}</p>
-                              <p className="text-xs text-ink-muted">{[room.wilaya, room.commune, room.secteur].filter(Boolean).join(', ') || '—'}</p>
+                              <p className="text-xs text-ink-muted">{[room.commune].filter(Boolean).join(', ') || '—'}</p>
                             </>
                           ) : <p className="text-sm text-ink-muted">—</p>}
                         </SummaryCard>

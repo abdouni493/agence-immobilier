@@ -5,14 +5,12 @@ import { PanelLeftOpen } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useI18n } from '@/i18n';
-import { useApp } from '@/store/appStore';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarPinned, setSidebarPinned] = useState(true);
   const { dir } = useI18n();
-  const logo = useApp((s) => s.storeInfo.logo);
 
   const handleNavigate = () => {
     setMobileOpen(false);
@@ -21,16 +19,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Residence logo watermark — subtle brand background behind every page */}
-      {logo && (
-        <div aria-hidden className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center overflow-hidden">
-          <img
-            src={logo}
-            alt=""
-            className="w-[min(72vw,760px)] max-w-none select-none object-contain opacity-[0.04]"
-          />
-        </div>
-      )}
+      {/* The agency logo watermark is painted by `.app-bg::after` (see index.css). */}
 
       {/* Desktop sidebar with animation */}
       <AnimatePresence initial={false}>
@@ -81,7 +70,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               exit={{ opacity: 0, pointerEvents: 'none' }}
             >
               <div
-                className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                 onClick={() => setMobileOpen(false)}
               />
               <motion.div

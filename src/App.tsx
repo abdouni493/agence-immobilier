@@ -22,6 +22,7 @@ const Workers = lazy(() => import('@/pages/Workers'));
 const Expenses = lazy(() => import('@/pages/Expenses'));
 const Caisse = lazy(() => import('@/pages/Caisse'));
 const Reports = lazy(() => import('@/pages/Reports'));
+const Zakat = lazy(() => import('@/pages/Zakat'));
 const Settings = lazy(() => import('@/pages/Settings'));
 
 // Preload all pages to avoid white-screen delays on first navigation
@@ -38,6 +39,7 @@ const preload = () => {
   import('@/pages/Expenses');
   import('@/pages/Caisse');
   import('@/pages/Reports');
+  import('@/pages/Zakat');
   import('@/pages/Settings');
 };
 
@@ -110,6 +112,10 @@ function AppRoutes() {
           element={<PageShell><RequireModule module="reports"><Reports /></RequireModule></PageShell>}
         />
         <Route
+          path="zakat"
+          element={<PageShell><RequireModule module="reports"><Zakat /></RequireModule></PageShell>}
+        />
+        <Route
           path="settings"
           element={<PageShell><RequireModule module="settings"><Settings /></RequireModule></PageShell>}
         />
@@ -125,8 +131,14 @@ export default function App() {
   const setUser = useApp((s) => s.setUser);
   const loadAll = useApp((s) => s.loadAll);
   const loadStoreInfo = useApp((s) => s.loadStoreInfo);
+  const logo = useApp((s) => s.storeInfo.logo);
   const location = useLocation();
   const [authLoading, setAuthLoading] = useState(true);
+
+  // The agency logo is painted full-size behind every page (see `.app-bg::after`).
+  useEffect(() => {
+    document.documentElement.style.setProperty('--app-logo', logo ? `url("${logo}")` : 'none');
+  }, [logo]);
 
   useEffect(() => {
     // Load residence identity up-front so the login screen shows the real

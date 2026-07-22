@@ -4,8 +4,24 @@ import {
   reservationPaid, reservationRemaining, salePaid, saleRemaining,
   purchasePaid, purchaseRemaining, mediatorStats,
 } from '@/store/selectors';
-import { formatDA, formatDate, nightsBetween } from './utils';
-import { clientById, serviceName, mediatorName } from './lookups';
+import { formatDA, formatDate } from './utils';
+import { clientById, serviceName, mediatorName, reservationPeriod } from './lookups';
+import {
+  formatDZD, ZAKAT_RATE, NISAB_GOLD_GRAMS, type ZakatInputs, type ZakatResult,
+} from './zakat';
+
+/** Duration wording of a reservation: "3 nuit(s)" or "6 mois". */
+function durationLabel(data: AppData, r: Reservation): string {
+  const units = r.nights;
+  return reservationPeriod(data, r) === 'month'
+    ? `${units} mois`
+    : `${units} nuit(s)`;
+}
+
+/** Header of the price column: "Prix/nuit" or "Prix/mois". */
+function unitPriceHeader(data: AppData, r: Reservation): string {
+  return reservationPeriod(data, r) === 'month' ? 'Prix/mois' : 'Prix/nuit';
+}
 
 export const PRINT_STYLES = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -103,7 +119,7 @@ export function printHTML(title: string, bodyHtml: string) {
 
 export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo): string {
   const client = clientById(data, r.clientId);
-  const nights = nightsBetween(r.checkIn, r.checkOut);
+  const nights = r.nights;
   const paid = reservationPaid(r);
   const remaining = reservationRemaining(r);
 
@@ -188,14 +204,14 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
         <h3>📅 Location</h3>
         <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
         <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
-        <p><strong>Durée:</strong> ${nights} nuit(s)</p>
+        <p><strong>Durée:</strong> ${durationLabel(data, r)}</p>
       </div>
     </div>
 
     <!-- Apartments -->
     <p class="tbl-head">🏠 Appartement(s)</p>
     <table>
-      <thead><tr><th>Nom</th><th>Étage</th><th>Catégorie</th><th class="right">Prix/nuit</th><th class="right">Nuits</th><th class="right">Sous-total</th></tr></thead>
+      <thead><tr><th>Nom</th><th>Étage</th><th>Catégorie</th><th class="right">${unitPriceHeader(data, r)}</th><th class="right">Durée</th><th class="right">Sous-total</th></tr></thead>
       <tbody>${roomRows}</tbody>
     </table>
 
@@ -272,9 +288,9 @@ function apartmentSection(data: AppData, roomId: string, title = '🏠 Apparteme
   const floor = data.floors.find((f) => f.id === room.floorId)?.name;
   const lines = [
     `<p><strong>${room.name}</strong></p>`,
-    room.wilaya && `<p><strong>Wilaya:</strong> ${room.wilaya}${room.commune ? ` · <strong>Commune:</strong> ${room.commune}` : ''}</p>`,
-    !room.wilaya && room.commune ? `<p><strong>Commune:</strong> ${room.commune}</p>` : '',
-    room.secteur && `<p><strong>Secteur:</strong> ${room.secteur}</p>`,
+    room.commune && `<p><strong>Commune:</strong> ${room.commune}</p>`,
+    `<p><strong>Ameublement:</strong> ${room.furnished ? 'Meublé' : 'Non meublé'}</p>`,
+    room.furnished && room.furnitureDescription && `<p><strong>Meubles:</strong> ${room.furnitureDescription}</p>`,
     floor && `<p><strong>Étage:</strong> ${floor}</p>`,
     `<p><strong>Chambres:</strong> ${room.capacity}</p>`,
     room.description && `<p><strong>Description:</strong> ${room.description}</p>`,
@@ -474,7 +490,7 @@ export function buildReservationPaymentReceiptHTML(
         <p><strong>Appartement(s):</strong> ${roomsList || '—'}</p>
         <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
         <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
-        <p><strong>Durée:</strong> ${nightsBetween(r.checkIn, r.checkOut)} nuit(s)</p>
+        <p><strong>Durée:</strong> ${durationLabel(data, r)}</p>
       </div>
     </div>
     ${paymentsTable(r.payments)}`;
@@ -533,18 +549,189 @@ export function buildMediatorPaymentReceiptHTML(
   ]);
 }
 
+// ─── Rapport de Zakat ────────────────────────────────────────────────────────
+
+/** Printable Zakat statement for one accounting year (1 Jan → 31 Dec). */
+export function buildZakatReportHTML(
+  store: StoreInfo,
+  inputs: ZakatInputs,
+  result: ZakatResult,
+  year: number,
+): string {
+  const row = (label: string, value: string, cls = '') =>
+    `<tr><td>${label}</td><td class="right ${cls}">${value}</td></tr>`;
+
+  return `
+  <div class="doc">
+    ${docHeader(store, `ZAK-${year}`, `Exercice du 01/01/${year} au 31/12/${year}`, 'Calcul de la Zakat')}
+
+    <div class="doc-title-band">
+      <h2>Zakat des Biens Commerciaux</h2>
+      <div class="sub">Exercice ${year} — 1 janvier au 31 décembre · Taux ${(ZAKAT_RATE * 100).toFixed(1)} %</div>
+    </div>
+
+    <p class="tbl-head">💰 Actifs zakatables</p>
+    <table>
+      <thead><tr><th>Poste</th><th class="right">Montant</th></tr></thead>
+      <tbody>
+        ${row('Liquidités en banque', formatDZD(inputs.bankCash))}
+        ${row('Liquidités en caisse', formatDZD(inputs.cashOnHand))}
+        ${row('Commissions à encaisser', formatDZD(inputs.receivableCommissions))}
+        ${row("Biens immobiliers destinés à la revente", formatDZD(inputs.propertiesForSale))}
+        ${row('Autres marchandises', formatDZD(inputs.tradeInventory))}
+        ${row('Autres actifs zakatables', formatDZD(inputs.otherAssets))}
+        <tr><td><strong>Total des actifs</strong></td><td class="right"><strong>${formatDZD(result.totalAssets)}</strong></td></tr>
+      </tbody>
+    </table>
+
+    <p class="tbl-head">📉 Dettes exigibles</p>
+    <table>
+      <thead><tr><th>Poste</th><th class="right">Montant</th></tr></thead>
+      <tbody>
+        ${row('Dettes à court terme', formatDZD(result.totalLiabilities), 'badge-debt')}
+      </tbody>
+    </table>
+
+    <p class="tbl-head">🧮 Étapes du calcul</p>
+    <table>
+      <thead><tr><th>Étape</th><th class="right">Valeur</th></tr></thead>
+      <tbody>
+        ${row('Total des actifs', formatDZD(result.totalAssets))}
+        ${row('− Dettes exigibles', formatDZD(result.totalLiabilities))}
+        ${row('= Assiette zakatable nette', formatDZD(result.netWealth))}
+        ${row(
+          `Nisab (${NISAB_GOLD_GRAMS} g d'or${result.nisabFromGold ? ` × ${formatDZD(inputs.goldPricePerGram)}/g` : ''})`,
+          formatDZD(result.nisab),
+        )}
+        ${row('Nisab atteint ?', result.isDue ? 'Oui — Zakat obligatoire' : 'Non — Zakat non due')}
+        ${row('Taux appliqué', result.isDue ? `${(ZAKAT_RATE * 100).toFixed(1)} %` : '—')}
+      </tbody>
+    </table>
+
+    <div class="amount-hero">
+      <div class="lbl">Montant de la Zakat à verser</div>
+      <div class="val">${formatDZD(result.zakat)}</div>
+      <div class="words">${
+        result.isDue
+          ? `Soit ${formatDZD(result.netWealth)} × 2,5 %.`
+          : "L'assiette zakatable n'atteint pas le nisab : aucune Zakat n'est due."
+      }</div>
+    </div>
+
+    ${stampSection(store, 'responsable')}
+  </div>`;
+}
+
+// ─── Rapport des dépenses (période + catégorie) ─────────────────────────────
+
+/**
+ * Printable expenses report for a date range.
+ * `categoryId` narrows the general-expenses table to a single category;
+ * maintenance costs are always reported for the whole period.
+ */
+export function buildExpensesReportHTML(
+  data: AppData,
+  store: StoreInfo,
+  from: string,
+  to: string,
+  categoryId?: string,
+): string {
+  const expenses = data.expenses
+    .filter((e) => e.date >= from && e.date <= to && (!categoryId || e.categoryId === categoryId))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const maintenances = data.maintenances
+    .filter((m) => m.date >= from && m.date <= to)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const expensesTotal = expenses.reduce((s, e) => s + e.amount, 0);
+  const maintTotal = maintenances.reduce((s, m) => s + m.cost, 0);
+
+  const byCategory = data.expenseCategories
+    .map((c) => ({
+      name: c.name,
+      total: expenses.filter((e) => e.categoryId === c.id).reduce((s, e) => s + e.amount, 0),
+    }))
+    .filter((c) => c.total > 0)
+    .sort((a, b) => b.total - a.total);
+
+  const categoryName = categoryId
+    ? data.expenseCategories.find((c) => c.id === categoryId)?.name ?? '—'
+    : 'Toutes les catégories';
+
+  const expenseRows = expenses.length
+    ? expenses.map((e) => `<tr>
+        <td>${formatDate(e.date)}</td>
+        <td>${e.name}</td>
+        <td>${data.expenseCategories.find((c) => c.id === e.categoryId)?.name ?? '—'}</td>
+        <td>${e.description ?? ''}</td>
+        <td class="right badge-debt">${formatDA(e.amount)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Aucune dépense sur la période</td></tr>';
+
+  const maintRows = maintenances.length
+    ? maintenances.map((m) => `<tr>
+        <td>${formatDate(m.date)}</td>
+        <td>${data.rooms.find((r) => r.id === m.roomId)?.name ?? '—'}</td>
+        <td>${m.name}</td>
+        <td>${m.description ?? ''}</td>
+        <td class="right badge-debt">${formatDA(m.cost)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Aucune maintenance sur la période</td></tr>';
+
+  const categoryRows = byCategory
+    .map((c) => `<tr><td>${c.name}</td><td class="right">${formatDA(c.total)}</td></tr>`)
+    .join('');
+
+  return `
+  <div class="doc">
+    ${docHeader(store, `DEP-${from}_${to}`, `Période du ${formatDate(from)} au ${formatDate(to)}`, 'Rapport des Dépenses')}
+
+    <div class="doc-title-band">
+      <h2>Rapport des Dépenses</h2>
+      <div class="sub">${formatDate(from)} → ${formatDate(to)} · ${categoryName}</div>
+    </div>
+
+    <p class="tbl-head">🧾 Dépenses générales</p>
+    <table>
+      <thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Description</th><th class="right">Montant</th></tr></thead>
+      <tbody>${expenseRows}</tbody>
+    </table>
+
+    ${categoryRows ? `
+      <p class="tbl-head">📊 Répartition par catégorie</p>
+      <table>
+        <thead><tr><th>Catégorie</th><th class="right">Total</th></tr></thead>
+        <tbody>${categoryRows}</tbody>
+      </table>` : ''}
+
+    <p class="tbl-head">🔧 Maintenances</p>
+    <table>
+      <thead><tr><th>Date</th><th>Appartement</th><th>Intervention</th><th>Description</th><th class="right">Coût</th></tr></thead>
+      <tbody>${maintRows}</tbody>
+    </table>
+
+    <div class="totals-wrap">
+      <div class="row"><span>Dépenses générales</span><span class="badge-debt">${formatDA(expensesTotal)}</span></div>
+      <div class="row"><span>Maintenances</span><span class="badge-debt">${formatDA(maintTotal)}</span></div>
+      <div class="row grand"><span>Total des charges</span><span>${formatDA(expensesTotal + maintTotal)}</span></div>
+    </div>
+
+    ${stampSection(store, 'responsable')}
+  </div>`;
+}
+
 // ─── Contrat de location (rental contract) ──────────────────────────────────
 
 export function buildRentalContractHTML(data: AppData, r: Reservation, store: StoreInfo): string {
   const client = clientById(data, r.clientId);
-  const nights = nightsBetween(r.checkIn, r.checkOut);
+  const nights = r.nights;
   const paid = reservationPaid(r);
   const remaining = reservationRemaining(r);
 
   const roomRows = r.rooms.map((rr) => {
     const room = data.rooms.find((x) => x.id === rr.roomId);
     const floor = room ? (data.floors.find((f) => f.id === room.floorId)?.name ?? '—') : '—';
-    const loc = room ? [room.wilaya, room.commune, room.secteur].filter(Boolean).join(', ') : '';
+    const loc = room?.commune ?? '';
     return `<tr>
       <td>${room?.name ?? '—'}</td>
       <td>${loc || '—'}</td>
@@ -585,7 +772,7 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
 
     <p class="tbl-head">🏠 Bien(s) loué(s)</p>
     <table>
-      <thead><tr><th>Appartement</th><th>Localisation</th><th>Étage</th><th class="right">Prix/nuit</th><th class="right">Nuits</th><th class="right">Sous-total</th></tr></thead>
+      <thead><tr><th>Appartement</th><th>Localisation</th><th>Étage</th><th class="right">${unitPriceHeader(data, r)}</th><th class="right">Durée</th><th class="right">Sous-total</th></tr></thead>
       <tbody>${roomRows}</tbody>
     </table>
 
@@ -594,7 +781,7 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
         <h3>📅 Durée de la location</h3>
         <p><strong>Arrivée :</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
         <p><strong>Départ :</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
-        <p><strong>Durée :</strong> ${nights} nuit(s)</p>
+        <p><strong>Durée :</strong> ${durationLabel(data, r)}</p>
       </div>
       <div class="section blue">
         <h3>💰 Conditions financières</h3>
@@ -607,7 +794,7 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
     <div class="clauses">
       <h4>Conditions générales</h4>
       <ol>
-        <li>La présente location est consentie pour la période du ${formatDate(r.checkIn)} au ${formatDate(r.checkOut)}, soit ${nights} nuit(s).</li>
+        <li>La présente location est consentie pour la période du ${formatDate(r.checkIn)} au ${formatDate(r.checkOut)}, soit ${durationLabel(data, r)}.</li>
         <li>Le montant total de la location s'élève à ${formatDA(r.total)}, payable selon l'échéancier convenu entre les parties.</li>
         <li>Le locataire s'engage à occuper le bien loué paisiblement et à le restituer dans l'état où il l'a reçu.</li>
         <li>Toute prolongation au-delà de la date de départ pourra donner lieu à une facturation supplémentaire au tarif journalier en vigueur.</li>
@@ -633,7 +820,7 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
   const client = clientById(data, r.clientId);
   const paid = reservationPaid(r);
   const remaining = reservationRemaining(r);
-  const nights = nightsBetween(r.checkIn, r.checkOut);
+  const nights = r.nights;
   const roomsList = r.rooms
     .map((rr) => data.rooms.find((x) => x.id === rr.roomId)?.name)
     .filter(Boolean)
@@ -661,7 +848,7 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
         <h3>📋 Location ${r.code}</h3>
         <p><strong>Appartement(s) :</strong> ${roomsList || '—'}</p>
         <p><strong>Séjour :</strong> ${formatDate(r.checkIn)} → ${formatDate(r.checkOut)}</p>
-        <p><strong>Durée :</strong> ${nights} nuit(s)</p>
+        <p><strong>Durée :</strong> ${durationLabel(data, r)}</p>
       </div>
     </div>
 

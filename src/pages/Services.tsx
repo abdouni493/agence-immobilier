@@ -99,7 +99,7 @@ export default function Services() {
               <motion.div key={svc.id} variants={listItem} layout exit="exit">
                 <GradientCard
                   className="p-5 h-full flex flex-col border border-white/10 shadow-xl"
-                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                 >
                   <div className="flex items-start gap-3">
                     <div className="grid h-11 w-11 place-items-center rounded-xl bg-white/15 text-white shadow-lg shrink-0">

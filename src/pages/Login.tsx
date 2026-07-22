@@ -134,7 +134,7 @@ export default function Login() {
 
       {/* ── Left branding panel ─────────────────────────────────────── */}
       <div className="relative hidden lg:flex lg:w-[52%] flex-col justify-between overflow-hidden"
-        style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+        style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
       >
         {/* Decorative orbs */}
         <Orb className="h-80 w-80 bg-sky-400 -top-16 -left-16" delay={0} />

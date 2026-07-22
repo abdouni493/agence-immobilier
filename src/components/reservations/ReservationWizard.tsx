@@ -14,7 +14,8 @@ import { TextField } from '@/components/ui/Field';
 import { ClientForm } from '@/components/forms/ClientForm';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
 import { reservationPaid } from '@/store/selectors';
-import { cn, formatDA, nightsBetween, todayISO, initials } from '@/lib/utils';
+import { cn, formatDA, nightsBetween, monthsBetween, addMonthsISO, todayISO, initials } from '@/lib/utils';
+import { rentalPeriodOf } from '@/lib/lookups';
 import type { Reservation, ReservationService, ReservationStatus } from '@/types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -155,7 +156,7 @@ function ApartmentCalendar({
               onMouseLeave={() => setHovered(null)}
               className={cn(
                 'relative aspect-square w-full rounded-lg text-xs font-medium transition-all flex items-center justify-center',
-                disabled && 'text-slate-300 bg-slate-50/30 cursor-not-allowed',
+                disabled && 'text-slate-300 bg-white/[0.02] cursor-not-allowed',
                 occupied && !isCI && !isCO && 'bg-rose-50 text-rose-500 line-through opacity-60',
                 !disabled && !isCI && !isCO && !inRange && !occupied && 'hover:bg-sky-50 text-ink-secondary',
                 (isCI || isCO) && 'bg-gradient-to-r from-[#1e3a8a] via-[#1d4ed8] to-[#0891b2] text-white shadow-md font-bold',
@@ -301,14 +302,27 @@ export function ReservationWizard({
   }, [data.rooms, calendarRoomId, roomIds, editing]);
 
   // ── Derived values ────────────────────────────────────────────────────────
-  const nights = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
+  // The apartment drives the billing unit: nightly apartments are picked on the
+  // calendar, monthly ones use plain start/end date fields.
+  const billingRoom = data.rooms.find(r => r.id === (roomIds[0] ?? calendarRoomId));
+  const period = rentalPeriodOf(billingRoom);
+  const isMonthly = period === 'month';
+
+  /** Number of billed units (nights or months) for the selected range. */
+  const units = checkIn && checkOut && checkOut > checkIn
+    ? (isMonthly ? monthsBetween(checkIn, checkOut) : nightsBetween(checkIn, checkOut))
+    : 0;
+  const nights = units;
+  const unitLabel = isMonthly
+    ? (units > 1 ? t('common.months') : t('common.monthUnit'))
+    : (units > 1 ? t('common.nights') : t('common.night'));
 
   const roomsTotal = useMemo(() =>
     roomIds.reduce((sum, id) => {
       const r = data.rooms.find(r => r.id === id);
-      return sum + (r ? r.pricePerNight * nights : 0);
+      return sum + (r ? r.pricePerNight * units : 0);
     }, 0),
-    [roomIds, data.rooms, nights]);
+    [roomIds, data.rooms, units]);
 
   const servicesTotal = useMemo(() =>
     Object.entries(services).reduce((sum, [id, qty]) => {
@@ -430,7 +444,7 @@ export function ReservationWizard({
         <motion.div
           key="wiz"
           className="fixed inset-0 z-[100] flex flex-col"
-          style={{ background: '#f8fafc' }}
+          style={{ background: 'var(--surface-0)' }}
           initial={{ y: '100%' }}
           animate={{ y: 0 }}
           exit={{ y: '100%' }}
@@ -509,7 +523,7 @@ export function ReservationWizard({
                         {roomIds.map(id => data.rooms.find(r => r.id === id)?.name).filter(Boolean).join(', ')}
                       </p>
                       {checkIn && checkOut && (
-                        <p className="text-ink-muted">{checkIn} → {checkOut} · <span className="font-medium text-brand-600">{nights}n</span></p>
+                        <p className="text-ink-muted">{checkIn} → {checkOut} · <span className="font-medium text-brand-600">{units} {unitLabel}</span></p>
                       )}
                     </div>
                   )}
@@ -635,8 +649,63 @@ export function ReservationWizard({
                           )}
                         </div>
 
+                        {/* Monthly rentals: plain start / end date fields (no calendar grid).
+                            Nightly rentals keep the availability calendar. */}
+                        {calendarRoomId && isMonthly && (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                            <p className="text-xs font-bold text-ink-muted uppercase tracking-wide flex items-center gap-1.5">
+                              <CalendarDays size={12} /> {t('res.monthlyPeriod')}
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <TextField
+                                label={t('res.startDate')}
+                                type="date"
+                                value={checkIn}
+                                onChange={e => {
+                                  const ci = e.target.value;
+                                  setCheckIn(ci);
+                                  // Default to a one-month lease so the total is never empty.
+                                  if (ci && (!checkOut || checkOut <= ci)) setCheckOut(addMonthsISO(ci, 1));
+                                }}
+                              />
+                              <TextField
+                                label={t('res.endDate')}
+                                type="date"
+                                min={checkIn || undefined}
+                                value={checkOut}
+                                onChange={e => setCheckOut(e.target.value)}
+                              />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[11px] text-ink-muted">{t('res.quickDuration')}</span>
+                              {[1, 3, 6, 12].map(m => (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  disabled={!checkIn}
+                                  onClick={() => setCheckOut(addMonthsISO(checkIn, m))}
+                                  className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-ink-secondary hover:border-brand-300 hover:text-brand-700 disabled:opacity-40"
+                                >
+                                  {m} {m > 1 ? t('common.months') : t('common.monthUnit')}
+                                </button>
+                              ))}
+                            </div>
+                            {units > 0 && (
+                              <div className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#1e3a8a] via-[#1d4ed8] to-[#0891b2] py-2.5 text-white text-sm font-bold shadow-glow">
+                                <CalendarDays size={15} /> {units} {unitLabel}
+                              </div>
+                            )}
+                            {hasConflict && (
+                              <div className="flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-rose-700 text-xs font-semibold">
+                                <AlertTriangle size={15} className="shrink-0 text-rose-500" />
+                                {t('res.conflictHint')}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Calendar */}
-                        {calendarRoomId && (
+                        {calendarRoomId && !isMonthly && (
                           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
                             <ApartmentCalendar
                               checkIn={checkIn} checkOut={checkOut}
@@ -648,7 +717,7 @@ export function ReservationWizard({
                             {hasConflict && (
                               <div className="flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-rose-700 text-xs font-semibold">
                                 <AlertTriangle size={15} className="shrink-0 text-rose-500" />
-                                Une ou plusieurs chambres sélectionnées sont occupées ou en maintenance pendant cette période.
+                                {t('res.conflictHint')}
                               </div>
                             )}
                           </div>
@@ -742,7 +811,7 @@ export function ReservationWizard({
                                     <span className="block text-sm font-semibold text-ink-primary truncate">{c.firstName} {c.lastName}</span>
                                     <span className="block text-xs text-ink-muted">{c.phone}</span>
                                   </span>
-                                  <ArrowRight size={14} className="ml-auto text-slate-300 shrink-0" />
+                                  <ArrowRight size={14} className="ml-auto text-ink-muted shrink-0" />
                                 </motion.button>
                               ))}
                               {filteredClients.length === 0 && (
@@ -809,7 +878,7 @@ export function ReservationWizard({
                               })}
                             </div>
                             {servicesTotal > 0 && (
-                              <div className="flex items-center justify-between rounded-xl bg-slate-800 px-5 py-3">
+                              <div className="flex items-center justify-between rounded-xl bg-white/10 border border-white/10 px-5 py-3">
                                 <span className="text-sm text-white/70 font-medium">Total services</span>
                                 <span className="text-lg font-extrabold text-white">{formatDA(servicesTotal)}</span>
                               </div>
@@ -836,7 +905,7 @@ export function ReservationWizard({
                                   {cat && <span className="text-ink-muted text-xs"> · {cat.name}</span>}
                                   {floor && <span className="text-ink-muted text-xs"> · {floor.name}</span>}
                                 </div>
-                                <span className="font-medium text-ink-secondary">{formatDA(room.pricePerNight)}/nuit</span>
+                                <span className="font-medium text-ink-secondary">{formatDA(room.pricePerNight)} / {rentalPeriodOf(room) === 'month' ? t('common.monthUnit') : t('common.night')}</span>
                               </div>
                             );
                           })}
@@ -846,7 +915,7 @@ export function ReservationWizard({
                         <SummaryCard icon={<CalendarDays size={16} />} title="Dates" color="emerald">
                           <div className="flex items-center justify-between text-sm">
                             <span className="text-ink-secondary">{checkIn} → {checkOut}</span>
-                            <span className="font-bold text-emerald-700">{nights} nuit{nights > 1 ? 's' : ''}</span>
+                            <span className="font-bold text-emerald-700">{units} {unitLabel}</span>
                           </div>
                           <p className="text-xs text-ink-muted mt-0.5">Arrivée {checkInTime} · Départ {checkOutTime}</p>
                         </SummaryCard>
@@ -882,7 +951,7 @@ export function ReservationWizard({
                           </div>
                           <div className="p-5 space-y-3">
                             <div className="flex justify-between text-sm text-ink-secondary">
-                              <span>{nights} nuit{nights > 1 ? 's' : ''}</span>
+                              <span>{units} {unitLabel}</span>
                               <span>{formatDA(roomsTotal)}</span>
                             </div>
                             {servicesTotal > 0 && (

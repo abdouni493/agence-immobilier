@@ -92,7 +92,7 @@ export default function Mediateurs() {
               const stats = mediatorStats(m, data.sales);
               return (
                 <motion.div key={m.id} variants={listItem} layout exit="exit">
-                  <GradientCard className="p-5 h-full flex flex-col border border-white/10 shadow-xl" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                  <GradientCard className="p-5 h-full flex flex-col border border-white/10 shadow-xl" style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}>
                     <div className="flex items-start gap-3">
                       <div className={['bg-grad-gold', 'bg-grad-rose', 'bg-grad-teal', 'bg-grad-purple'][idx % 4] + ' grid h-12 w-12 place-items-center rounded-xl text-white font-bold shrink-0'}>
                         {initials(`${m.firstName} ${m.lastName}`)}
@@ -112,7 +112,7 @@ export default function Mediateurs() {
                       )}
                     </div>
 
-                    <div className="mt-4 space-y-1.5 text-sm text-slate-200 flex-1">
+                    <div className="mt-4 space-y-1.5 text-sm text-ink-secondary flex-1">
                       <p className="flex items-center gap-2"><Phone size={14} className="text-sky-300" /> {m.phone}</p>
                       {m.email && <p className="flex items-center gap-2 truncate"><Mail size={14} className="text-sky-300 shrink-0" /> <span className="truncate">{m.email}</span></p>}
                       {m.city && <p className="flex items-center gap-2"><MapPin size={14} className="text-sky-300" /> {m.city}</p>}
@@ -120,16 +120,16 @@ export default function Mediateurs() {
 
                     <div className="mt-3 grid grid-cols-3 gap-2 text-center rounded-xl bg-white/10 border border-white/10 backdrop-blur-md p-2.5">
                       <div>
-                        <p className="text-[10px] text-slate-300">{t('mediators.salesCount')}</p>
+                        <p className="text-[10px] text-ink-secondary">{t('mediators.salesCount')}</p>
                         <p className="text-xs font-bold text-white">{stats.salesCount}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-300">{t('common.paid')}</p>
+                        <p className="text-[10px] text-ink-secondary">{t('common.paid')}</p>
                         <p className="text-xs font-bold text-emerald-300">{formatDA(stats.paid)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-300">{t('common.remaining')}</p>
-                        <p className={`text-xs font-bold ${stats.remaining > 0 ? 'text-amber-300' : 'text-slate-300'}`}>{formatDA(stats.remaining)}</p>
+                        <p className="text-[10px] text-ink-secondary">{t('common.remaining')}</p>
+                        <p className={`text-xs font-bold ${stats.remaining > 0 ? 'text-amber-300' : 'text-ink-secondary'}`}>{formatDA(stats.remaining)}</p>
                       </div>
                     </div>
 

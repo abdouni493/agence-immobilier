@@ -62,12 +62,12 @@ export function PurchaseWizard({
     existingRoom
       ? {
           name: existingRoom.name,
-          wilaya: existingRoom.wilaya ?? '',
           commune: existingRoom.commune ?? '',
-          secteur: existingRoom.secteur ?? '',
           floorId: existingRoom.floorId ?? '',
           capacity: String(existingRoom.capacity ?? 1),
           description: existingRoom.description ?? '',
+          furnished: !!existingRoom.furnished,
+          furnitureDescription: existingRoom.furnitureDescription ?? '',
         }
       : emptyAptDraft,
   );
@@ -129,10 +129,10 @@ export function PurchaseWizard({
       floorId: aptDraft.floorId,
       categoryId: '',
       pricePerNight: 0,
-      wilaya: aptDraft.wilaya.trim() || undefined,
       commune: aptDraft.commune.trim() || undefined,
-      secteur: aptDraft.secteur.trim() || undefined,
       description: aptDraft.description.trim() || undefined,
+      furnished: aptDraft.furnished,
+      furnitureDescription: aptDraft.furnished ? aptDraft.furnitureDescription.trim() || undefined : undefined,
       propertyType: 'sale' as const,
       ownerClientId: clientId,
       salePrice: saleNum || undefined,
@@ -182,7 +182,7 @@ export function PurchaseWizard({
         <motion.div
           key="purchase-wiz"
           className="fixed inset-0 z-[100] flex flex-col"
-          style={{ background: '#f8fafc' }}
+          style={{ background: 'var(--surface-0)' }}
           initial={{ y: '100%' }}
           animate={{ y: 0 }}
           exit={{ y: '100%' }}
@@ -357,7 +357,7 @@ export function PurchaseWizard({
                                     <span className="block text-sm font-semibold text-ink-primary truncate">{c.firstName} {c.lastName}</span>
                                     <span className="block text-xs text-ink-muted">{c.phone}</span>
                                   </span>
-                                  <ArrowRight size={14} className="ml-auto text-slate-300 shrink-0" />
+                                  <ArrowRight size={14} className="ml-auto text-ink-muted shrink-0" />
                                 </motion.button>
                               ))}
                               {filteredClients.length === 0 && <p className="col-span-full text-center text-sm text-ink-muted py-10">{t('common.noResults')}</p>}
@@ -373,7 +373,7 @@ export function PurchaseWizard({
                         <SummaryCard icon={<Building2 size={16} />} title={t('purchases.stepApartment')} color="sky">
                           <p className="text-sm font-bold">{aptDraft.name}</p>
                           <p className="text-xs text-ink-muted flex items-center gap-1">
-                            <MapPin size={11} /> {[aptDraft.wilaya, aptDraft.commune, aptDraft.secteur].filter(Boolean).join(', ') || '—'}
+                            <MapPin size={11} /> {aptDraft.commune || '—'}
                           </p>
                         </SummaryCard>
 

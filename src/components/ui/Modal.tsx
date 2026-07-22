@@ -56,7 +56,7 @@ export function Modal({
           exit="exit"
         >
           <motion.div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={onClose}
             variants={modalOverlay}
           />

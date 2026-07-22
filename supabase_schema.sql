@@ -83,10 +83,16 @@ CREATE TABLE IF NOT EXISTS public.rooms (
                      CHECK (status = ANY (ARRAY['available'::text, 'occupied'::text, 'maintenance'::text])),
   maintenance_note text,
   -- Fiche appartement (real-estate agency fields)
-  wilaya           text,
+  wilaya           text,   -- legacy, no longer used by the app
   commune          text,
-  secteur          text,
+  secteur          text,   -- legacy, no longer used by the app
   description      text,
+  -- Billing unit of a rental: price_per_night holds the rent for ONE unit
+  -- (one night when 'day', one month when 'month').
+  rental_period    text NOT NULL DEFAULT 'day'
+                     CHECK (rental_period = ANY (ARRAY['day'::text, 'month'::text])),
+  furnished             boolean NOT NULL DEFAULT false,
+  furniture_description text,
   property_type    text NOT NULL DEFAULT 'rental'
                      CHECK (property_type = ANY (ARRAY['rental'::text, 'sale'::text])),
   owner_client_id  uuid,

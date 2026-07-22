@@ -36,7 +36,7 @@ const variants: Record<Variant, string> = {
   rose: 'bg-grad-rose text-white shadow-[0_10px_26px_-6px_rgba(244,63,94,0.45)] hover:brightness-[1.07]',
   outline: 'border border-slate-300 text-ink-primary hover:bg-slate-100/70 hover:border-brand-300',
   ghost: 'text-ink-secondary hover:text-ink-primary hover:bg-slate-100/70',
-  glass: 'glass text-ink-primary hover:bg-white/90 hover:shadow-card',
+  glass: 'glass text-ink-primary hover:bg-white/10 hover:shadow-card',
 };
 
 const sizes: Record<Size, string> = {

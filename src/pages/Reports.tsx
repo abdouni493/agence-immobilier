@@ -96,7 +96,7 @@ export default function Reports() {
                     'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all duration-205 whitespace-nowrap',
                     activeTab === tab.id
                       ? 'border-sky-500 text-sky-400'
-                      : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      : 'border-transparent text-slate-400 hover:text-ink-primary hover:border-slate-300'
                   )}
                 >
                   {tab.icon}
@@ -110,7 +110,7 @@ export default function Reports() {
               <div className="space-y-6">
                 <div
                   className="rounded-2xl border border-white/10 p-6 shadow-xl"
-                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                 >
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
                     <FileText size={18} className="text-sky-305 text-sky-300" />
@@ -126,7 +126,7 @@ export default function Reports() {
 
                 <div
                   className="rounded-2xl border border-white/10 p-6 shadow-xl"
-                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                 >
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
                     <Landmark size={18} className="text-sky-305 text-sky-300" />
@@ -145,7 +145,7 @@ export default function Reports() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div
                   className="lg:col-span-2 rounded-2xl border border-white/10 p-6 shadow-xl space-y-4"
-                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                 >
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
                     <CalendarCheck size={18} className="text-sky-305 text-sky-300" />
@@ -170,7 +170,7 @@ export default function Reports() {
 
                 <div
                   className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4"
-                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                 >
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
                     <BedDouble size={18} className="text-sky-355 text-sky-300" />
@@ -181,7 +181,7 @@ export default function Reports() {
                     <div className="space-y-3">
                       {report.rooms.occupancy.map((o) => (
                         <div key={o.name} className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-slate-200 w-16 truncate">{o.name}</span>
+                          <span className="text-xs font-semibold text-ink-secondary w-16 truncate">{o.name}</span>
                           <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
                             <div className="h-full bg-gradient-to-r from-blue-400 to-cyan-400" style={{ width: `${o.rate}%` }} />
                           </div>
@@ -198,7 +198,7 @@ export default function Reports() {
                     <p className="text-xs font-bold text-sky-200/80 uppercase mb-2">{t('reports.nightsSold')}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {report.reservations.nightsSold.slice(0, 8).map((n) => (
-                        <span key={n.name} className="text-[11px] font-semibold rounded-lg bg-white/10 border border-white/10 px-2 py-1 text-slate-200">{n.name}: {n.nights}</span>
+                        <span key={n.name} className="text-[11px] font-semibold rounded-lg bg-white/10 border border-white/10 px-2 py-1 text-ink-secondary">{n.name}: {n.nights}</span>
                       ))}
                     </div>
                   </div>
@@ -210,7 +210,7 @@ export default function Reports() {
               <div className="space-y-6">
                 {/* KPI strip */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl" style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}>
                     <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
                       <Tags size={18} className="text-emerald-300" /> {t('reports.sales')} ({report.sales.count})
                     </h3>
@@ -220,7 +220,7 @@ export default function Reports() {
                       <Stat label={t('reports.salesDebts')} value={formatDA(report.sales.debts)} tone={report.sales.debts > 0 ? 'danger' : 'default'} dark />
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl" style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}>
                     <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
                       <ShoppingBag size={18} className="text-amber-300" /> {t('reports.purchases')} ({report.purchases.count})
                     </h3>
@@ -230,7 +230,7 @@ export default function Reports() {
                       <Stat label={t('reports.purchasesRemaining')} value={formatDA(report.purchases.remaining)} tone={report.purchases.remaining > 0 ? 'danger' : 'default'} dark />
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl" style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}>
                     <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
                       <Handshake size={18} className="text-sky-300" /> {t('reports.mediators')}
                     </h3>
@@ -243,7 +243,7 @@ export default function Reports() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4" style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}>
                     <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
                       <Tags size={18} className="text-emerald-300" /> {t('reports.sales')}
                     </h3>
@@ -253,7 +253,7 @@ export default function Reports() {
                       empty={report.sales.list.length === 0}
                     />
                   </div>
-                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                  <div className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4" style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}>
                     <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
                       <ShoppingBag size={18} className="text-amber-300" /> {t('reports.purchases')}
                     </h3>
@@ -265,7 +265,7 @@ export default function Reports() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                <div className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4" style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}>
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
                     <Handshake size={18} className="text-sky-300" /> {t('reports.mediators')}
                   </h3>
@@ -282,7 +282,7 @@ export default function Reports() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div
                   className="lg:col-span-2 rounded-2xl border border-white/10 p-6 shadow-xl space-y-4"
-                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                 >
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
                     <Users size={18} className="text-sky-355 text-sky-300" />
@@ -294,7 +294,7 @@ export default function Reports() {
                       <div className="space-y-1">
                         {report.clients.top.map((c, i) => (
                           <div key={c.name} className="flex justify-between text-sm py-2 border-b border-white/5 last:border-0">
-                            <span className="text-slate-200 font-medium">{i + 1}. {c.name}</span>
+                            <span className="text-ink-secondary font-medium">{i + 1}. {c.name}</span>
                             <span className="text-white font-bold">{formatDA(c.total)}</span>
                           </div>
                         ))}
@@ -308,7 +308,7 @@ export default function Reports() {
                       <div className="space-y-1">
                         {report.clients.debts.slice(0, 6).map((d) => (
                           <div key={d.name} className="flex justify-between text-sm py-2 border-b border-white/5 last:border-0">
-                            <span className="text-slate-200 font-medium">{d.name}</span>
+                            <span className="text-ink-secondary font-medium">{d.name}</span>
                             <span className="text-rose-300 font-bold">{formatDA(d.amount)}</span>
                           </div>
                         ))}
@@ -320,7 +320,7 @@ export default function Reports() {
 
                 <div
                   className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4"
-                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                 >
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
                     <Sparkles size={18} className="text-sky-355 text-sky-300" />
@@ -339,7 +339,7 @@ export default function Reports() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div
                   className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4"
-                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                 >
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
                     <TrendingDown size={18} className="text-rose-300" />
@@ -350,7 +350,7 @@ export default function Reports() {
                     rows={report.expensesDetail.byCategory.map((c) => [c.name, formatDA(c.total)])}
                     empty={report.expensesDetail.byCategory.length === 0}
                   />
-                  <p className="text-sm text-slate-200 mt-4 pt-3 border-t border-white/10 flex items-center gap-2">
+                  <p className="text-sm text-ink-secondary mt-4 pt-3 border-t border-white/10 flex items-center gap-2">
                     <Wrench size={16} className="text-sky-300" />
                     {t('caisse.maintenances')}: <span className="text-rose-300 font-bold">{formatDA(report.rooms.maintTotal)}</span>
                   </p>
@@ -358,7 +358,7 @@ export default function Reports() {
 
                 <div
                   className="rounded-2xl border border-white/10 p-6 shadow-xl space-y-4"
-                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                 >
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
                     <HardHat size={18} className="text-sky-355 text-sky-300" />
@@ -383,7 +383,7 @@ export default function Reports() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="flex flex-col items-center justify-center text-center py-20 rounded-2xl border border-white/10 shadow-xl px-6"
-            style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+            style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
           >
             <div className="grid h-20 w-20 place-items-center rounded-3xl bg-white/10 text-white mb-5 shadow-sm"><BarChart3 size={36} /></div>
             <h3 className="text-lg font-bold text-white">Aucun rapport généré</h3>
@@ -410,7 +410,7 @@ function ReportTable({ head, rows, empty }: { head: string[]; rows: string[][]; 
         <tbody>
           {rows.map((row, ri) => (
             <tr key={ri} className="border-b border-white/5">
-              {row.map((cell, ci) => <td key={ci} className={cn('py-2 px-3', ci === 0 ? 'text-start text-white font-medium' : 'text-end text-slate-205 text-slate-200')}>{cell}</td>)}
+              {row.map((cell, ci) => <td key={ci} className={cn('py-2 px-3', ci === 0 ? 'text-start text-white font-medium' : 'text-end text-slate-205 text-ink-secondary')}>{cell}</td>)}
             </tr>
           ))}
         </tbody>

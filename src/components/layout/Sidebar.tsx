@@ -85,7 +85,7 @@ export function Sidebar({ onNavigate, pinned = false, onTogglePin }: SidebarProp
           const Icon = item.icon;
           return (
             <motion.div
-              key={item.module}
+              key={item.path}
               variants={sidebarItemVariant}
               whileHover={{ x: 4 }}
               whileTap={{ scale: 0.97 }}

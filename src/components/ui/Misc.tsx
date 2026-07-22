@@ -121,7 +121,7 @@ export function Stat({
           : 'text-ink-primary';
   return (
     <div className={cn('rounded-xl px-4 py-3', dark ? 'bg-white/10 border border-white/10' : 'bg-slate-100/70 border border-slate-200')}>
-      <p className={cn('text-xs', dark ? 'text-slate-300' : 'text-ink-muted')}>{label}</p>
+      <p className={cn('text-xs', dark ? 'text-ink-secondary' : 'text-ink-muted')}>{label}</p>
       <p className={cn('text-lg font-bold mt-0.5', toneClass)}>{value}</p>
     </div>
   );

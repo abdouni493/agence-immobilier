@@ -62,6 +62,8 @@ export interface Client {
 // ============ ROOMS ============
 export type RoomStatus = 'available' | 'occupied' | 'maintenance';
 export type PropertyType = 'rental' | 'sale';
+/** Billing unit of a rental apartment: per day (nightly) or per month. */
+export type RentalPeriod = 'day' | 'month';
 
 export interface Floor {
   id: string;
@@ -79,14 +81,20 @@ export interface Room {
   capacity: number; // nombre de chambres
   floorId: string;
   categoryId: string;
+  /** Rent for one billing unit — one night when `rentalPeriod === 'day'`,
+   *  one month when `rentalPeriod === 'month'`. */
   pricePerNight: number;
   status: RoomStatus;
   maintenanceNote?: string;
   // Fiche appartement (agence immobilière)
-  wilaya?: string;
   commune?: string;
-  secteur?: string;
   description?: string;
+  /** How a rental apartment is billed. Defaults to 'day' for legacy rows. */
+  rentalPeriod?: RentalPeriod;
+  /** Meublé / non meublé. */
+  furnished?: boolean;
+  /** Free text listing the furniture, only when `furnished` is true. */
+  furnitureDescription?: string;
   propertyType?: PropertyType; // location (rental) ou vente (sale)
   ownerClientId?: string; // client qui a confié / vendu cet appartement à l'agence
   ownerName?: string; // nom complet du propriétaire (optionnel, saisie libre)

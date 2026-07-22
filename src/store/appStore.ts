@@ -75,10 +75,11 @@ function dbToRoom(row: Record<string, unknown>): Room {
     pricePerNight: row.price_per_night as number,
     status: row.status as Room['status'],
     maintenanceNote: (row.maintenance_note as string) || undefined,
-    wilaya: (row.wilaya as string) || undefined,
     commune: (row.commune as string) || undefined,
-    secteur: (row.secteur as string) || undefined,
     description: (row.description as string) || undefined,
+    rentalPeriod: (row.rental_period as Room['rentalPeriod']) || 'day',
+    furnished: row.furnished === true,
+    furnitureDescription: (row.furniture_description as string) || undefined,
     propertyType: (row.property_type as Room['propertyType']) || 'rental',
     ownerClientId: (row.owner_client_id as string) || undefined,
     ownerName: (row.owner_name as string) || undefined,
@@ -801,10 +802,11 @@ export const useApp = create<AppState>()((set, get) => ({
         price_per_night: r.pricePerNight,
         status: 'available',
         maintenance_note: r.maintenanceNote || null,
-        wilaya: r.wilaya || null,
         commune: r.commune || null,
-        secteur: r.secteur || null,
         description: r.description || null,
+        rental_period: r.rentalPeriod || 'day',
+        furnished: r.furnished ?? false,
+        furniture_description: r.furnitureDescription || null,
         property_type: r.propertyType || 'rental',
         owner_client_id: r.ownerClientId || null,
         owner_name: r.ownerName || null,
@@ -837,10 +839,11 @@ export const useApp = create<AppState>()((set, get) => ({
     if (patch.pricePerNight !== undefined) dbPatch.price_per_night = patch.pricePerNight;
     if (patch.status !== undefined) dbPatch.status = patch.status;
     if (patch.maintenanceNote !== undefined) dbPatch.maintenance_note = patch.maintenanceNote || null;
-    if (patch.wilaya !== undefined) dbPatch.wilaya = patch.wilaya || null;
     if (patch.commune !== undefined) dbPatch.commune = patch.commune || null;
-    if (patch.secteur !== undefined) dbPatch.secteur = patch.secteur || null;
     if (patch.description !== undefined) dbPatch.description = patch.description || null;
+    if (patch.rentalPeriod !== undefined) dbPatch.rental_period = patch.rentalPeriod;
+    if (patch.furnished !== undefined) dbPatch.furnished = patch.furnished;
+    if (patch.furnitureDescription !== undefined) dbPatch.furniture_description = patch.furnitureDescription || null;
     if (patch.propertyType !== undefined) dbPatch.property_type = patch.propertyType;
     if (patch.ownerClientId !== undefined) dbPatch.owner_client_id = patch.ownerClientId || null;
     if (patch.ownerName !== undefined) dbPatch.owner_name = patch.ownerName || null;

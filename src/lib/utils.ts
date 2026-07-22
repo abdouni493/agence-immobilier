@@ -76,6 +76,31 @@ export function nightsBetween(startISO: string, endISO: string): number {
   return Math.max(0, diff);
 }
 
+/** Number of whole months between two ISO dates, rounded up, minimum 1.
+ *  A month is counted from a day to the same day of the next month
+ *  (01/03 → 01/04 = 1 month); any extra day starts a new month. */
+export function monthsBetween(startISO: string, endISO: string): number {
+  if (!startISO || !endISO || endISO <= startISO) return 0;
+  const [sy, sm, sd] = startISO.split('-').map(Number);
+  const [ey, em, ed] = endISO.split('-').map(Number);
+  let months = (ey - sy) * 12 + (em - sm);
+  if (ed < sd) months -= 1;
+  // Any remaining days beyond the whole months count as one more month.
+  const anchor = new Date(sy, sm - 1 + months, sd);
+  const end = new Date(ey, em - 1, ed);
+  if (end.getTime() > anchor.getTime()) months += 1;
+  return Math.max(1, months);
+}
+
+/** Add `n` months to an ISO date, clamping the day to the target month length. */
+export function addMonthsISO(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const target = new Date(y, m - 1 + n, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(d, lastDay));
+  return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+}
+
 /** Whether two [start,end) date ranges overlap */
 export function rangesOverlap(
   aStart: string,

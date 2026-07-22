@@ -131,7 +131,7 @@ export default function Caisse() {
 
         <SectionCard
           dark
-          style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+          style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
           className="flex flex-col justify-center"
         >
           <div className="flex items-center gap-2 text-emerald-305 text-emerald-300"><TrendingUp size={18} /><span className="text-sm font-medium">{t('caisse.totalIn')}</span></div>
@@ -140,7 +140,7 @@ export default function Caisse() {
 
         <SectionCard
           dark
-          style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+          style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
           className="flex flex-col justify-center"
         >
           <div className="flex items-center gap-2 text-rose-350 text-rose-300"><TrendingDown size={18} /><span className="text-sm font-medium">{t('caisse.totalOut')}</span></div>
@@ -174,7 +174,7 @@ export default function Caisse() {
         <div className="lg:col-span-2 space-y-4">
           <SectionCard
             dark
-            style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+            style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
             title={t('caisse.gains')}
             icon={<TrendingUp size={18} />}
           >
@@ -189,7 +189,7 @@ export default function Caisse() {
 
           <SectionCard
             dark
-            style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+            style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
             title={t('caisse.expensesSection')}
             icon={<TrendingDown size={18} />}
           >
@@ -207,7 +207,7 @@ export default function Caisse() {
           {mediatorItems.length > 0 && (
             <SectionCard
               dark
-              style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+              style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
               title={t('caisse.mediatorsOut')}
               icon={<Handshake size={18} />}
             >
@@ -223,7 +223,7 @@ export default function Caisse() {
           {purchaseItems.length > 0 && (
             <SectionCard
               dark
-              style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+              style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
               title={t('caisse.purchasesOut')}
               icon={<ShoppingBag size={18} />}
             >
@@ -237,7 +237,7 @@ export default function Caisse() {
 
           <SectionCard
             dark
-            style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+            style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
             title={t('caisse.manualTx')}
             icon={<Wallet size={18} />}
           >
@@ -255,7 +255,7 @@ export default function Caisse() {
         <div>
           <div
             className="rounded-2xl border border-white/10 shadow-xl overflow-hidden sticky top-24"
-            style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+            style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
           >
             <div className="bg-white/10 px-5 py-4">
               <p className="text-sky-200/80 text-xs">{t('caisse.recap')}</p>
@@ -352,7 +352,7 @@ function CatLine({ icon, label, total, breakdown }: { icon: React.ReactNode; lab
 
 function RecapLine({ label, value, positive, negative }: { label: string; value: number; positive?: boolean; negative?: boolean }) {
   return (
-    <div className="flex justify-between text-slate-250 text-slate-200">
+    <div className="flex justify-between text-slate-250 text-ink-secondary">
       <span>{label}</span>
       <span className={cn('font-medium', positive ? 'text-emerald-305 text-emerald-300' : negative ? 'text-rose-350 text-rose-300' : 'text-white')}>
         {positive ? '+' : negative ? '−' : ''}{formatDA(value)}

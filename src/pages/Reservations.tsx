@@ -26,6 +26,7 @@ import { PrintPrompt } from '@/components/ui/PrintPrompt';
 import { reservationPaid, reservationRemaining } from '@/store/selectors';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, formatDateLong, rangesOverlap, todayISO, addDaysISO, monthKey, nightsBetween } from '@/lib/utils';
+import { reservationPeriod, rentalPeriodOf } from '@/lib/lookups';
 import { useToday } from '@/lib/useToday';
 import { clientName, reservationRoomLabels, clientById } from '@/lib/lookups';
 import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVersementHTML, printHTML } from '@/lib/print';
@@ -250,7 +251,7 @@ export default function Reservations() {
                 <motion.div key={r.id} variants={listItem} layout exit={{ opacity: 0, scale: 0.95 }}>
                   <GradientCard
                     className="p-5 h-full flex flex-col border border-white/10 shadow-xl"
-                    style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                    style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}
                   >
                     {/* Header row */}
                     <div className="flex items-center justify-between gap-2">
@@ -287,7 +288,7 @@ export default function Reservations() {
                           <p className="text-xs font-bold leading-tight text-sky-200">
                             {t('res.pendingCountdown', { days: nightsBetween(today, r.checkIn) })}
                           </p>
-                          <p className="mt-0.5 text-[11px] leading-snug text-slate-300">
+                          <p className="mt-0.5 text-[11px] leading-snug text-ink-secondary">
                             {t('res.pendingCountdownDesc', { date: formatDate(r.checkIn, lang) })}
                           </p>
                         </div>
@@ -299,30 +300,30 @@ export default function Reservations() {
                       <p className="flex items-center gap-2 text-sm font-semibold text-white">
                         <User size={15} className="text-sky-300" /> {clientName(data, r.clientId)}
                       </p>
-                      <p className="flex items-center gap-2 text-xs text-slate-300">
+                      <p className="flex items-center gap-2 text-xs text-ink-secondary">
                         <Phone size={13} className="text-sky-300" /> {clientById(data, r.clientId)?.phone}
                       </p>
-                      <p className="flex items-center gap-2 text-xs text-slate-300">
+                      <p className="flex items-center gap-2 text-xs text-ink-secondary">
                         <Building2 size={13} className="text-sky-300" /> {reservationRoomLabels(data, r)}
                       </p>
-                      <p className="flex items-center gap-2 text-xs text-slate-300">
-                        <CalendarDays size={13} className="text-sky-300" /> {formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)} · {r.nights} {t('common.nights')}
+                      <p className="flex items-center gap-2 text-xs text-ink-secondary">
+                        <CalendarDays size={13} className="text-sky-300" /> {formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)} · {r.nights} {reservationPeriod(data, r) === 'month' ? t('common.months') : t('common.nights')}
                       </p>
                     </div>
 
                     {/* Totals */}
                     <div className="mt-3 grid grid-cols-3 gap-2 text-center rounded-xl bg-white/10 border border-white/10 backdrop-blur-md p-2.5">
                       <div>
-                        <p className="text-[10px] text-slate-300">{t('common.total')}</p>
+                        <p className="text-[10px] text-ink-secondary">{t('common.total')}</p>
                         <p className="text-xs font-bold text-white">{formatDA(r.total)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-300">{t('common.paid')}</p>
+                        <p className="text-[10px] text-ink-secondary">{t('common.paid')}</p>
                         <p className="text-xs font-bold text-emerald-350 text-emerald-300">{formatDA(reservationPaid(r))}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-300">{t('common.remaining')}</p>
-                        <p className={`text-xs font-bold ${remaining > 0 ? 'text-amber-300' : 'text-slate-300'}`}>{formatDA(remaining)}</p>
+                        <p className="text-[10px] text-ink-secondary">{t('common.remaining')}</p>
+                        <p className={`text-xs font-bold ${remaining > 0 ? 'text-amber-300' : 'text-ink-secondary'}`}>{formatDA(remaining)}</p>
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 border-t border-white/10 pt-3 flex-wrap">
@@ -531,7 +532,7 @@ function ClotureModal({ reservation, onClose }: { reservation: Reservation | nul
               <span className="font-semibold">{r.checkInTime} → {r.checkOutTime}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-ink-secondary">Nuits réservées</span>
+              <span className="text-ink-secondary">{reservationPeriod(data, r) === 'month' ? t('res.monthsBooked') : t('res.nightsBooked')}</span>
               <span className="font-semibold">{r.nights}</span>
             </div>
           </div>
@@ -799,8 +800,8 @@ function DetailModal({
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-ink-primary">{formatDA(rr.pricePerNight)} <span className="text-[10px] font-normal text-ink-muted">/ {t('common.night')}</span></p>
-                      <p className="text-xs text-ink-muted">{r.nights} {r.nights > 1 ? t('common.nights') : t('common.night')}</p>
+                      <p className="text-sm font-bold text-ink-primary">{formatDA(rr.pricePerNight)} <span className="text-[10px] font-normal text-ink-muted">/ {rentalPeriodOf(data.rooms.find((x) => x.id === rr.roomId)) === 'month' ? t('common.monthUnit') : t('common.night')}</span></p>
+                      <p className="text-xs text-ink-muted">{r.nights} {reservationPeriod(data, r) === 'month' ? t('common.months') : (r.nights > 1 ? t('common.nights') : t('common.night'))}</p>
                     </div>
                   </div>
                 );
@@ -883,7 +884,7 @@ function DetailModal({
                 <span>Paiement</span>
                 <span>{pctPaid}%</span>
               </div>
-              <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+              <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
                   style={{ width: `${pctPaid}%` }}
@@ -1035,7 +1036,7 @@ function PrintChoiceModal({
               <span className="block text-sm font-bold text-ink-primary">{o.title}</span>
               <span className="block text-xs text-ink-muted mt-0.5">{o.desc}</span>
             </span>
-            <ChevronRight size={18} className="shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 rtl:rotate-180" />
+            <ChevronRight size={18} className="shrink-0 text-ink-muted transition-transform group-hover:translate-x-0.5 rtl:rotate-180" />
           </button>
         ))}
       </div>

@@ -165,7 +165,7 @@ export function CalendarTimeline({
             'radial-gradient(circle at 12% 12%, rgba(99,102,241,0.10), transparent 42%),' +
             'radial-gradient(circle at 88% 8%, rgba(14,165,233,0.10), transparent 40%),' +
             'radial-gradient(circle at 78% 88%, rgba(16,185,129,0.08), transparent 44%),' +
-            'linear-gradient(135deg, #f8fafc 0%, #eef4ff 55%, #ecfeff 100%)',
+            'linear-gradient(135deg, #16191e 0%, #1b2029 55%, #1a2430 100%)',
         }}
       >
         {/* Title Bar */}
@@ -173,7 +173,7 @@ export function CalendarTimeline({
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="flex items-center justify-between px-6 py-4 border-b border-slate-200/70 bg-white/70 backdrop-blur-xl shadow-sm"
+          className="flex items-center justify-between px-6 py-4 border-b border-slate-200/70 bg-white/5 backdrop-blur-xl shadow-sm"
         >
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
@@ -214,7 +214,7 @@ export function CalendarTimeline({
         </motion.header>
 
         {/* Stats + Filters + Navigation */}
-        <section className="px-6 py-4 bg-white/50 backdrop-blur-md border-b border-slate-200/70 space-y-4">
+        <section className="px-6 py-4 bg-white/5 backdrop-blur-md border-b border-slate-200/70 space-y-4">
           {/* Professional summary stats */}
           <motion.div
             variants={{ animate: { transition: { staggerChildren: 0.06 } } }}
@@ -499,7 +499,7 @@ export function CalendarTimeline({
           )}
 
           {/* Legend */}
-          <div className="rounded-2xl border border-slate-200 bg-white/70 backdrop-blur-md px-5 py-4 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white/5 backdrop-blur-md px-5 py-4 shadow-sm">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">{t('res.legend')}</p>
             <div className="flex flex-wrap gap-x-5 gap-y-2">
               <Legend colorClass="bg-gradient-to-r from-violet-500 to-purple-500" label={t('res.statusPending')} />
@@ -551,7 +551,7 @@ export function CalendarTimeline({
                 <div className="flex items-center gap-2 text-ink-secondary">
                   <CalendarDays size={13} className="text-blue-500 shrink-0" />
                   <span className="truncate flex items-center gap-1">
-                    {formatDate(popover.res.checkIn, lang)} <ArrowRight size={11} className="text-slate-300" /> {formatDate(popover.res.checkOut, lang)}
+                    {formatDate(popover.res.checkIn, lang)} <ArrowRight size={11} className="text-ink-muted" /> {formatDate(popover.res.checkOut, lang)}
                   </span>
                 </div>
 

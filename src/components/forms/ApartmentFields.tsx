@@ -5,25 +5,25 @@ import { TextField, SelectField, TextArea } from '@/components/ui/Field';
 import type { Floor } from '@/types';
 
 /** Controlled draft for the shared apartment identity fields
- *  (nom, wilaya, commune, secteur, étage, nb chambres, description). */
+ *  (nom, commune, étage, nb chambres, ameublement, description). */
 export interface AptDraft {
   name: string;
-  wilaya: string;
   commune: string;
-  secteur: string;
   floorId: string;
   capacity: string;
   description: string;
+  furnished: boolean;
+  furnitureDescription: string;
 }
 
 export const emptyAptDraft: AptDraft = {
   name: '',
-  wilaya: '',
   commune: '',
-  secteur: '',
   floorId: '',
   capacity: '2',
   description: '',
+  furnished: false,
+  furnitureDescription: '',
 };
 
 export function ApartmentFields({
@@ -47,9 +47,7 @@ export function ApartmentFields({
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <TextField label={t('rooms.roomName')} required value={draft.name} onChange={(e) => set('name', e.target.value)} />
-      <TextField label={t('apt.wilaya')} value={draft.wilaya} onChange={(e) => set('wilaya', e.target.value)} />
       <TextField label={t('apt.commune')} value={draft.commune} onChange={(e) => set('commune', e.target.value)} />
-      <TextField label={t('apt.secteur')} value={draft.secteur} onChange={(e) => set('secteur', e.target.value)} />
 
       <div>
         <SelectField label={t('apt.etage')} value={draft.floorId} onChange={(e) => set('floorId', e.target.value)}>
@@ -89,6 +87,44 @@ export function ApartmentFields({
       </div>
 
       <TextField label={t('apt.roomsNumber')} type="number" value={draft.capacity} onChange={(e) => set('capacity', e.target.value)} />
+
+      <div className="sm:col-span-2">
+        <p className="text-xs font-semibold text-ink-secondary mb-1.5">{t('apt.furnishing')}</p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => set('furnished', true)}
+            className={`flex-1 h-10 rounded-lg text-sm font-semibold transition-all border ${
+              draft.furnished
+                ? 'bg-emerald-600 border-emerald-600 text-white'
+                : 'border-slate-200 bg-white text-ink-secondary hover:border-emerald-300'
+            }`}
+          >
+            {t('apt.furnished')}
+          </button>
+          <button
+            type="button"
+            onClick={() => set('furnished', false)}
+            className={`flex-1 h-10 rounded-lg text-sm font-semibold transition-all border ${
+              !draft.furnished
+                ? 'bg-brand-600 border-brand-600 text-white'
+                : 'border-slate-200 bg-white text-ink-secondary hover:border-brand-300'
+            }`}
+          >
+            {t('apt.unfurnished')}
+          </button>
+        </div>
+        {draft.furnished && (
+          <TextArea
+            wrapClassName="mt-3"
+            label={t('apt.furnitureDescription')}
+            value={draft.furnitureDescription}
+            onChange={(e) => set('furnitureDescription', e.target.value)}
+            placeholder={t('apt.furniturePlaceholder')}
+          />
+        )}
+      </div>
+
       <TextArea wrapClassName="sm:col-span-2" label={t('apt.description')} value={draft.description} onChange={(e) => set('description', e.target.value)} />
     </div>
   );

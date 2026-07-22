@@ -136,7 +136,7 @@ export function ClientForm({
               <button
                 type="button"
                 onClick={() => set('photos', (data.photos ?? []).filter((_, idx) => idx !== i))}
-                className="absolute top-1 end-1 grid h-6 w-6 place-items-center rounded-full bg-slate-900/40 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-1 end-1 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <X size={14} />
               </button>

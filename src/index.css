@@ -2,40 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK-GREY THEME TOKENS
+   The Tailwind palette is re-mapped in tailwind.config.js (slate ramp
+   inverted, accent 50/100/200 darkened). This file carries the few pieces
+   that cannot be expressed through the palette alone.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 :root {
-  color-scheme: light;
-  --color-saas-primary-start:   #1e3a8a;
-  --color-saas-primary-via:     #1d4ed8;
-  --color-saas-primary-end:     #0891b2;
+  color-scheme: dark;
+
+  --surface-0: #121417; /* app canvas */
+  --surface-1: #1a1e24; /* cards, sidebar, header */
+  --surface-2: #22262e; /* raised panels */
+  --border-1: #2b3038;
+
+  --color-saas-primary-start: #1e3a8a;
+  --color-saas-primary-via: #1d4ed8;
+  --color-saas-primary-end: #0891b2;
   --brand-gradient: linear-gradient(135deg, var(--color-saas-primary-start) 0%, var(--color-saas-primary-via) 50%, var(--color-saas-primary-end) 100%);
   --brand-gradient-hover: linear-gradient(135deg, var(--color-saas-primary-via) 0%, var(--color-saas-primary-end) 100%);
-  --glow-sky: 0 10px 20px rgba(29, 78, 216, 0.25);
-}
+  --glow-sky: 0 10px 20px rgba(37, 99, 235, 0.35);
 
-.btn-saas-primary {
-  position: relative;
-  overflow: hidden;
-  border-radius: 0.75rem; /* rounded-xl */
-  padding: 0.75rem 1.5rem; /* px-6 py-3 */
-  font-weight: 600;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  color: white;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  background: linear-gradient(to right, var(--color-saas-primary-start), var(--color-saas-primary-via), var(--color-saas-primary-end));
-  border: none;
-  cursor: pointer;
-  user-select: none;
-}
-.btn-saas-primary:active {
-  transform: scale(0.95);
-}
-.btn-saas-primary:hover {
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05);
-  transform: scale(1.03) translateY(-0.0625rem);
+  /* Set at runtime from the agency logo (see App.tsx) */
+  --app-logo: none;
 }
 
 * {
@@ -50,8 +40,8 @@ body,
 
 body {
   margin: 0;
-  background-color: #f1f5f9;
-  color: #0f172a;
+  background-color: var(--surface-0);
+  color: #f2f5f8;
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -61,25 +51,50 @@ html[dir='rtl'] body {
   font-family: 'Cairo', 'Tajawal', system-ui, sans-serif;
 }
 
-/* Animated app background: soft light canvas with subtle grid + pastel glows */
+/* `bg-white` is used everywhere as "the card surface". Re-point it to the dark
+   surface. Opacity variants (bg-white/10 …) are separate classes and keep
+   their translucent-white meaning on top of dark cards. */
+.bg-white {
+  background-color: var(--surface-1);
+}
+.hover\:bg-white:hover {
+  background-color: var(--surface-2);
+}
+
+/* ── App background: grey canvas + full agency logo watermark ─────────────── */
 .app-bg {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background-color: #f1f5f9;
+  background-color: var(--surface-0);
   background-image:
-    radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.1), transparent 42%),
-    radial-gradient(circle at 85% 15%, rgba(139, 92, 246, 0.08), transparent 40%),
-    radial-gradient(circle at 75% 85%, rgba(6, 182, 212, 0.07), transparent 44%),
-    linear-gradient(rgba(15, 23, 42, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 23, 42, 0.025) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+    radial-gradient(circle at 15% 20%, rgba(96, 165, 250, 0.07), transparent 45%),
+    radial-gradient(circle at 85% 12%, rgba(139, 92, 246, 0.06), transparent 42%),
+    radial-gradient(circle at 75% 88%, rgba(34, 211, 238, 0.05), transparent 46%),
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 46px 46px, 46px 46px;
+}
+
+/* The complete logo, contained edge-to-edge behind every page. */
+.app-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--app-logo);
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: contain;
+  opacity: 0.06;
+  pointer-events: none;
 }
 
 .login-bg {
-  background: linear-gradient(-45deg, #eef2ff, #f8fafc, #ede9fe, #e0f2fe);
-  background-size: 400% 400%;
-  animation: gradient-shift 12s ease infinite;
+  background-color: #14171c;
+  background-image:
+    radial-gradient(circle at 20% 25%, rgba(37, 99, 235, 0.16), transparent 45%),
+    radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.13), transparent 42%),
+    radial-gradient(circle at 60% 90%, rgba(8, 145, 178, 0.12), transparent 48%);
 }
 
 @keyframes gradient-shift {
@@ -94,22 +109,54 @@ html[dir='rtl'] body {
   }
 }
 
-/* Glassmorphism utility — light frosted surfaces */
+/* ── Glassmorphism — frosted dark surfaces ────────────────────────────────── */
 .glass {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(30, 34, 41, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .glass-strong {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(26, 30, 36, 0.9);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Scrollbar styling */
+/* Unified raised dark card used by list/report surfaces. */
+.card-dark {
+  background: linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btn-saas-primary {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: white;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -1px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: linear-gradient(to right, var(--color-saas-primary-start), var(--color-saas-primary-via), var(--color-saas-primary-end));
+  border: none;
+  cursor: pointer;
+  user-select: none;
+}
+.btn-saas-primary:active {
+  transform: scale(0.95);
+}
+.btn-saas-primary:hover {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  transform: scale(1.03) translateY(-0.0625rem);
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -118,14 +165,21 @@ html[dir='rtl'] body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.3);
+  background: rgba(148, 163, 184, 0.28);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.55);
+  background: rgba(148, 163, 184, 0.5);
   background-clip: content-box;
+}
+
+/* Native form controls follow the dark scheme (date/time pickers included) */
+input,
+select,
+textarea {
+  color-scheme: dark;
 }
 
 /* Text gradient helper */
@@ -136,12 +190,10 @@ html[dir='rtl'] body {
   -webkit-text-fill-color: transparent;
 }
 
-/* Sky-blue gradient button */
 .bg-grad-primary {
   background: var(--brand-gradient);
 }
 
-/* Animated gradient button */
 .btn-gradient {
   background: var(--brand-gradient);
   background-size: 200% 200%;
@@ -152,7 +204,6 @@ html[dir='rtl'] body {
   transform: translateY(-1px);
 }
 
-/* Status badge pulse animations */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -166,13 +217,12 @@ input[type='number']::-webkit-outer-spin-button {
   margin: 0;
 }
 
-/* Focus ring */
 .focus-ring:focus-visible {
-  outline: 2px solid #818cf8;
+  outline: 2px solid #60a5fa;
   outline-offset: 2px;
 }
 
-/* Print styles for reports & invoices */
+/* ── Print: documents are always printed on white paper ──────────────────── */
 @media print {
   .no-print {
     display: none !important;
@@ -182,18 +232,21 @@ input[type='number']::-webkit-outer-spin-button {
     background: #fff !important;
     color: #000 !important;
   }
+  .app-bg::after {
+    display: none !important;
+  }
   .print-area {
     color: #000 !important;
   }
 }
 
-/* Unified Card Action Buttons */
+/* ── Unified card action buttons ─────────────────────────────────────────── */
 .btn-card-action {
   display: grid;
   place-items: center;
-  width: 2.25rem; /* 36px */
-  height: 2.25rem; /* 36px */
-  border-radius: 0.75rem; /* rounded-xl */
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.75rem;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   border: 1px solid transparent;
@@ -207,8 +260,8 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 .btn-action-edit {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(96, 165, 250, 0.25);
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(96, 165, 250, 0.28);
   color: #93c5fd;
 }
 .btn-action-edit:hover {
@@ -219,8 +272,8 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 .btn-action-delete {
-  background: rgba(244, 63, 94, 0.12);
-  border-color: rgba(251, 113, 133, 0.25);
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(251, 113, 133, 0.28);
   color: #fda4af;
 }
 .btn-action-delete:hover {
@@ -243,8 +296,8 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 .btn-action-pay {
-  background: rgba(16, 185, 129, 0.12);
-  border-color: rgba(52, 211, 153, 0.25);
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(52, 211, 153, 0.28);
   color: #6ee7b7;
 }
 .btn-action-pay:hover {
@@ -255,8 +308,8 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 .btn-action-print {
-  background: rgba(14, 165, 233, 0.12);
-  border-color: rgba(56, 189, 248, 0.25);
+  background: rgba(14, 165, 233, 0.14);
+  border-color: rgba(56, 189, 248, 0.28);
   color: #7dd3fc;
 }
 .btn-action-print:hover {
@@ -267,8 +320,8 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 .btn-action-perm {
-  background: rgba(139, 92, 246, 0.12);
-  border-color: rgba(167, 85, 247, 0.25);
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(167, 85, 247, 0.28);
   color: #c084fc;
 }
 .btn-action-perm:hover {
@@ -279,8 +332,8 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 .btn-action-maint {
-  background: rgba(245, 158, 11, 0.12);
-  border-color: rgba(251, 191, 36, 0.25);
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(251, 191, 36, 0.28);
   color: #fde047;
 }
 .btn-action-maint:hover {
@@ -289,4 +342,3 @@ input[type='number']::-webkit-outer-spin-button {
   box-shadow: 0 0 14px rgba(217, 119, 6, 0.45);
   border-color: #f59e0b;
 }
-

@@ -129,7 +129,7 @@ export default function Achats() {
               const margin = p.salePrice - p.purchasePrice;
               return (
                 <motion.div key={p.id} variants={listItem} layout exit={{ opacity: 0, scale: 0.95 }}>
-                  <GradientCard className="p-5 h-full flex flex-col border border-white/10 shadow-xl" style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}>
+                  <GradientCard className="p-5 h-full flex flex-col border border-white/10 shadow-xl" style={{ background: 'linear-gradient(145deg, #1b1f25 0%, #22272f 55%, #2a3039 100%)' }}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-bold text-sky-200 truncate">{p.code}</span>
                       <PurchaseStatusBadge status={p.status} />
@@ -139,16 +139,16 @@ export default function Achats() {
                       <p className="flex items-center gap-2 text-sm font-semibold text-white">
                         <Building2 size={15} className="text-sky-300" /> {roomName(data, p.roomId)}
                       </p>
-                      <p className="flex items-center gap-2 text-xs text-slate-300">
+                      <p className="flex items-center gap-2 text-xs text-ink-secondary">
                         <MapPin size={13} className="text-sky-300" /> {roomLocation(data, p.roomId)}
                       </p>
-                      <p className="flex items-center gap-2 text-xs text-slate-300">
+                      <p className="flex items-center gap-2 text-xs text-ink-secondary">
                         <User size={13} className="text-sky-300" /> {clientName(data, p.clientId)}
                       </p>
-                      <p className="flex items-center gap-2 text-xs text-slate-300">
+                      <p className="flex items-center gap-2 text-xs text-ink-secondary">
                         <Phone size={13} className="text-sky-300" /> {clientById(data, p.clientId)?.phone}
                       </p>
-                      <p className="flex items-center gap-2 text-xs text-slate-300">
+                      <p className="flex items-center gap-2 text-xs text-ink-secondary">
                         <CalendarDays size={13} className="text-sky-300" /> {formatDate(p.date, lang)} · {p.time}
                       </p>
                       {p.salePrice > 0 && (
@@ -160,16 +160,16 @@ export default function Achats() {
 
                     <div className="mt-3 grid grid-cols-3 gap-2 text-center rounded-xl bg-white/10 border border-white/10 backdrop-blur-md p-2.5">
                       <div>
-                        <p className="text-[10px] text-slate-300">{t('purchases.purchasePrice')}</p>
+                        <p className="text-[10px] text-ink-secondary">{t('purchases.purchasePrice')}</p>
                         <p className="text-xs font-bold text-white">{formatDA(p.purchasePrice)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-300">{t('common.paid')}</p>
+                        <p className="text-[10px] text-ink-secondary">{t('common.paid')}</p>
                         <p className="text-xs font-bold text-emerald-300">{formatDA(purchasePaid(p))}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-300">{t('common.remaining')}</p>
-                        <p className={`text-xs font-bold ${remaining > 0 ? 'text-amber-300' : 'text-slate-300'}`}>{formatDA(remaining)}</p>
+                        <p className="text-[10px] text-ink-secondary">{t('common.remaining')}</p>
+                        <p className={`text-xs font-bold ${remaining > 0 ? 'text-amber-300' : 'text-ink-secondary'}`}>{formatDA(remaining)}</p>
                       </div>
                     </div>
 
@@ -280,9 +280,7 @@ function PurchaseDetailModal({
               <div className="space-y-2 text-sm">
                 <p className="text-base font-bold text-ink-primary">{room.name}</p>
                 <div className="grid grid-cols-2 gap-3 text-xs">
-                  {room.wilaya && <InfoLine label={t('apt.wilaya')} value={room.wilaya} />}
                   {room.commune && <InfoLine label={t('apt.commune')} value={room.commune} />}
-                  {room.secteur && <InfoLine label={t('apt.secteur')} value={room.secteur} />}
                   <InfoLine label={t('apt.roomsNumber')} value={String(room.capacity)} />
                 </div>
                 {room.description && <p className="text-xs text-ink-secondary pt-2 border-t border-slate-100">{room.description}</p>}
@@ -339,7 +337,7 @@ function PurchaseDetailModal({
             </div>
             <div className="space-y-1.5 pt-1">
               <div className="flex justify-between text-[10px] text-slate-400 font-semibold"><span>Paiement</span><span>{pct}%</span></div>
-              <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500" style={{ width: `${pct}%` }} /></div>
+              <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500" style={{ width: `${pct}%` }} /></div>
             </div>
           </div>
 
