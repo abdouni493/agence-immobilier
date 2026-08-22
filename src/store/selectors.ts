@@ -2,8 +2,24 @@ import type { Reservation, Room, Worker, Sale, Purchase, Mediator } from '@/type
 import type { AppData } from '@/data/seed';
 import { nightsBetween, rangesOverlap, monthKey } from '@/lib/utils';
 
+/** One unsettled agency-fee commission owed to a worker, with its location. */
+export interface WorkerCommission {
+  reservationId: string;
+  code: string;
+  clientId: string;
+  checkIn: string;
+  checkOut: string;
+  agencyFee: number;
+  percent: number;
+  amount: number;
+  settled: boolean;
+  paymentId?: string;
+}
+
 export interface WorkerPayCalc {
   gross: number;
+  commissions: WorkerCommission[];
+  commissionsTotal: number;
   absencesDeduction: number;
   advancesDeduction: number;
   net: number;
@@ -12,17 +28,48 @@ export interface WorkerPayCalc {
 
 const DAYS_PER_MONTH = 26;
 
-export function workerPayCalc(w: Worker): WorkerPayCalc {
+/** Every agency-fee commission attached to this worker (settled or not). */
+export function workerCommissions(workerId: string, reservations: Reservation[]): WorkerCommission[] {
+  return reservations
+    .filter(
+      (r) =>
+        r.agencyFeeWorkerId === workerId &&
+        r.status !== 'cancelled' &&
+        (r.agencyFeeCommission ?? 0) > 0,
+    )
+    .map((r) => ({
+      reservationId: r.id,
+      code: r.code,
+      clientId: r.clientId,
+      checkIn: r.checkIn,
+      checkOut: r.checkOut,
+      agencyFee: r.agencyFee ?? 0,
+      percent: r.agencyFeePercent ?? 0,
+      amount: r.agencyFeeCommission ?? 0,
+      settled: !!r.agencyFeeCommissionSettled,
+      paymentId: r.agencyFeeCommissionPaymentId,
+    }))
+    .sort((a, b) => b.checkIn.localeCompare(a.checkIn));
+}
+
+/**
+ * Pay slip for the current (open) period: base salary + the agency-fee
+ * commissions not yet paid, minus the absences and advances not yet deducted.
+ * Anything already stamped with a payment id belongs to the history instead.
+ */
+export function workerPayCalc(w: Worker, reservations: Reservation[] = []): WorkerPayCalc {
   const gross = w.hasSalary
     ? w.salaryType === 'monthly'
       ? w.salaryAmount ?? 0
       : (w.salaryAmount ?? 0) * DAYS_PER_MONTH
     : 0;
-  const absencesDeduction = w.absences.reduce((s, a) => s + a.cost, 0);
+  const commissions = workerCommissions(w.id, reservations).filter((c) => !c.settled);
+  const commissionsTotal = commissions.reduce((s, c) => s + c.amount, 0);
+  const absencesDeduction = w.absences.filter((a) => !a.deducted).reduce((s, a) => s + a.cost, 0);
   const advancesDeduction = w.advances.filter((a) => !a.deducted).reduce((s, a) => s + a.amount, 0);
-  const net = Math.max(0, gross - absencesDeduction - advancesDeduction);
+  const net = Math.max(0, gross + commissionsTotal - absencesDeduction - advancesDeduction);
   const totalPaid = w.payments.reduce((s, p) => s + p.amount, 0);
-  return { gross, absencesDeduction, advancesDeduction, net, totalPaid };
+  return { gross, commissions, commissionsTotal, absencesDeduction, advancesDeduction, net, totalPaid };
 }
 
 export function reservationPaid(r: Reservation): number {
@@ -349,8 +396,9 @@ export function computeKpis(data: AppData, today: string): Kpis {
     data.reservations.reduce((s, r) => s + reservationRemaining(r), 0) +
     data.sales.reduce((s, v) => s + saleRemaining(v), 0);
 
-  const statuses = data.rooms.map((r) => effectiveRoomStatus(r, data.reservations, today));
-  const roomsTotal = data.rooms.length;
+  const liveRooms = data.rooms.filter((r) => !r.deleted);
+  const statuses = liveRooms.map((r) => effectiveRoomStatus(r, data.reservations, today));
+  const roomsTotal = liveRooms.length;
   const roomsMaintenance = statuses.filter((s) => s === 'maintenance').length;
   const occupied = statuses.filter((s) => s === 'occupied').length;
   const roomsAvailable = statuses.filter((s) => s === 'available').length;
@@ -433,7 +481,7 @@ export function reservationsByMonth(reservations: Reservation[], months: string[
 
 export function occupancyByFloor(data: AppData, today: string) {
   return data.floors.map((f) => {
-    const floorRooms = data.rooms.filter((r) => r.floorId === f.id);
+    const floorRooms = data.rooms.filter((r) => r.floorId === f.id && !r.deleted);
     const bookable = floorRooms.filter((r) => r.status !== 'maintenance');
     const occ = bookable.filter(
       (r) => effectiveRoomStatus(r, data.reservations, today) === 'occupied',

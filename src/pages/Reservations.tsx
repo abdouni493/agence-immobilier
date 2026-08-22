@@ -4,7 +4,7 @@ import {
   CalendarCheck, Plus, CalendarRange, Eye, Pencil, Printer, CreditCard, User, Phone,
   Building2, CalendarDays, Wallet, Trash2, CheckCircle2, PlayCircle,
   Mail, MapPin, Clock, ShieldCheck, DollarSign, FileText, Hourglass,
-  FileSignature, Receipt, ChevronRight,
+  FileSignature, Receipt, ChevronRight, Briefcase, HardHat,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -33,6 +33,12 @@ import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVerse
 import type { Reservation, Payment } from '@/types';
 
 type PrintKind = 'contract' | 'versement';
+
+/** Name of the employee holding the agency-fee commission of a location. */
+function workerName(data: ReturnType<typeof useAppData>, id?: string): string {
+  if (!id) return '—';
+  return data.workers.find((w) => w.id === id)?.name ?? '—';
+}
 
 type Period = 'today' | 'week' | 'month' | 'all';
 type StatusFilter = 'all' | 'pending' | 'active' | 'paid' | 'debt' | 'cancelled';
@@ -310,6 +316,18 @@ export default function Reservations() {
                         <CalendarDays size={13} className="text-sky-300" /> {formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)} · {r.nights} {reservationPeriod(data, r) === 'month' ? t('common.months') : t('common.nights')}
                       </p>
                     </div>
+
+                    {(r.agencyFee ?? 0) > 0 && (
+                      <p className="mt-1.5 flex items-center gap-2 text-xs text-amber-200">
+                        <Briefcase size={13} className="text-amber-300" />
+                        {t('fee.title')} : {formatDA(r.agencyFee ?? 0)}
+                        {(r.agencyFeeCommission ?? 0) > 0 && (
+                          <span className="text-[11px] text-amber-300/80">
+                            · {workerName(data, r.agencyFeeWorkerId)} {r.agencyFeePercent ?? 0}%
+                          </span>
+                        )}
+                      </p>
+                    )}
 
                     {/* Totals */}
                     <div className="mt-3 grid grid-cols-3 gap-2 text-center rounded-xl bg-white/10 border border-white/10 backdrop-blur-md p-2.5">
@@ -839,6 +857,38 @@ function DetailModal({
             )}
           </div>
 
+          {/* Card: agency fee + employee commission */}
+          {(r.agencyFee ?? 0) > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-sm space-y-3">
+              <h4 className="text-xs font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-amber-200 pb-3">
+                <Briefcase size={14} /> {t('fee.title')}
+              </h4>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-ink-secondary">{t('fee.amount')}</span>
+                <span className="text-lg font-extrabold text-amber-700">{formatDA(r.agencyFee ?? 0)}</span>
+              </div>
+              {(r.agencyFeeCommission ?? 0) > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-white px-4 py-3 space-y-1.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-ink-primary flex items-center gap-1.5 min-w-0">
+                      <HardHat size={13} className="text-amber-500 shrink-0" />
+                      <span className="truncate">{workerName(data, r.agencyFeeWorkerId)}</span>
+                    </span>
+                    <span className="text-sm font-extrabold text-amber-700 shrink-0">{formatDA(r.agencyFeeCommission ?? 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] text-ink-muted">
+                      {r.agencyFeePercent ?? 0}% {t('fee.of')} {formatDA(r.agencyFee ?? 0)}
+                    </span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${r.agencyFeeCommissionSettled ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {r.agencyFeeCommissionSettled ? t('fee.settled') : t('fee.pending')}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Notes / remarque */}
           {r.notes && (
             <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-2">
@@ -864,6 +914,15 @@ function DetailModal({
                 <span className="text-xs text-slate-400">{t('common.total')}</span>
                 <span className="text-lg font-black text-white">{formatDA(total)}</span>
               </div>
+
+              {(r.agencyFee ?? 0) > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                    <Briefcase size={11} className="text-amber-400" /> {t('fee.title')}
+                  </span>
+                  <span className="text-sm font-bold text-amber-300">{formatDA(r.agencyFee ?? 0)}</span>
+                </div>
+              )}
 
               <div className="flex justify-between items-center">
                 <span className="text-xs text-slate-400">{t('common.paid')}</span>

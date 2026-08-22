@@ -25,31 +25,60 @@ function unitPriceHeader(data: AppData, r: Reservation): string {
 
 export const PRINT_STYLES = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; padding: 28px; background: #fff; font-size: 12.5px; }
-  .doc { max-width: 820px; margin: 0 auto; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; padding: 18px; background: #fff; font-size: 12.5px; }
 
-  /* ── Header ── */
-  .head { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 18px; border-bottom: 3px solid #0284c7; padding-bottom: 16px; margin-bottom: 18px; }
-  .logo-wrap { width: 80px; }
-  .logo-wrap img { width: 80px; height: auto; object-fit: contain; border-radius: 8px; }
-  .logo-placeholder { width: 80px; height: 60px; background: linear-gradient(135deg,#0ea5e9,#0284c7); border-radius: 10px; display:grid; place-items:center; font-size: 28px; font-weight: 800; color:#fff; }
-  .brand-info h1 { font-size: 18px; color: #0369a1; font-weight: 800; }
+  /* ── Page frame: every document is printed inside a double border ── */
+  .doc {
+    max-width: 820px;
+    margin: 0 auto;
+    border: 3px double #0284c7;
+    border-radius: 14px;
+    padding: 20px 22px 16px;
+    position: relative;
+  }
+  .doc::after {
+    content: '';
+    position: absolute;
+    inset: 5px;
+    border: 1px solid #bae6fd;
+    border-radius: 10px;
+    pointer-events: none;
+  }
+  .doc > * { position: relative; z-index: 1; }
+
+  /* ── Centered header: logo on top-middle, then the agency identity ── */
+  .head { text-align: center; border-bottom: 3px solid #0284c7; padding-bottom: 12px; margin-bottom: 14px; }
+  .logo-center { display: flex; justify-content: center; margin-bottom: 8px; }
+  .logo-center img { max-width: 130px; max-height: 84px; object-fit: contain; }
+  .logo-placeholder { width: 84px; height: 66px; background: linear-gradient(135deg,#0ea5e9,#0284c7); border-radius: 12px; display: grid; place-items: center; font-size: 30px; font-weight: 800; color: #fff; }
+  .brand-info h1 { font-size: 20px; color: #0369a1; font-weight: 800; letter-spacing: .3px; }
   .brand-info p { font-size: 11px; color: #64748b; margin-top: 2px; }
   .brand-info .description { font-size: 11px; color: #475569; font-style: italic; margin-top: 3px; }
-  .res-meta { text-align: right; }
-  .res-meta .code { font-size: 20px; font-weight: 900; color: #0369a1; }
-  .res-meta .date { font-size: 11px; color: #64748b; margin-top: 2px; }
-  .legal { display: flex; gap: 24px; font-size: 10.5px; color: #475569; margin-top: 4px; }
+  .legal { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 18px; font-size: 10.5px; color: #475569; margin-top: 5px; }
   .legal span { white-space: nowrap; }
 
+  /* Phone numbers are always emphasised. */
+  .tel, .phone, .brand-info .tel strong { font-weight: 800; color: #0f172a; }
+  .tel-label { font-weight: 400; color: #64748b; }
+
+  /* ── Document band (kind + number + date) under the header ── */
+  .doc-band { margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .doc-band .kind { background: #0284c7; color: #fff; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; padding: 4px 14px; border-radius: 999px; }
+  .doc-band .code { font-size: 16px; font-weight: 900; color: #0369a1; }
+  .doc-band .date { font-size: 11px; color: #64748b; }
+  .res-meta { text-align: center; }
+  .res-meta .code { font-size: 18px; font-weight: 900; color: #0369a1; }
+  .res-meta .date { font-size: 11px; color: #64748b; margin-top: 2px; }
+
   /* ── Section boxes ── */
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
-  .section { border: 2px solid; border-radius: 10px; padding: 12px 14px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .section { border: 2px solid; border-radius: 10px; padding: 11px 13px; }
   .section.blue { border-color: #bae6fd; }
   .section.green { border-color: #bbf7d0; }
   .section.violet { border-color: #ddd6fe; }
   .section.orange { border-color: #fed7aa; }
-  .section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 7px; font-weight: 700; }
+  .section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; font-weight: 700; }
   .section.blue h3 { color: #0284c7; }
   .section.green h3 { color: #059669; }
   .section.violet h3 { color: #7c3aed; }
@@ -57,48 +86,65 @@ export const PRINT_STYLES = `
   .section p { margin: 2px 0; line-height: 1.5; }
 
   /* ── Tables ── */
-  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 12px; }
-  th { background: #f0f9ff; text-align: left; padding: 8px 10px; font-size: 10.5px; text-transform: uppercase; color: #0369a1; letter-spacing: .4px; }
-  td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 12px; border: 1px solid #e2e8f0; }
+  th { background: #f0f9ff; text-align: left; padding: 7px 9px; font-size: 10.5px; text-transform: uppercase; color: #0369a1; letter-spacing: .4px; border-bottom: 1px solid #bae6fd; }
+  td { padding: 7px 9px; border-bottom: 1px solid #e2e8f0; }
   .right { text-align: right; }
-  .tbl-head { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; margin: 12px 0 6px; color: #475569; }
+  .tbl-head { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; margin: 10px 0 5px; color: #475569; }
 
   /* ── Totals ── */
-  .totals-wrap { margin-left: auto; width: 300px; border: 2px solid #bae6fd; border-radius: 10px; padding: 12px 16px; }
+  .totals-wrap { margin-left: auto; width: 320px; border: 2px solid #bae6fd; border-radius: 10px; padding: 11px 15px; }
   .totals-wrap .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
   .totals-wrap .grand { border-top: 2px solid #0284c7; margin-top: 6px; padding-top: 8px; font-size: 15px; font-weight: 800; color: #0369a1; }
   .badge-paid { color: #059669; font-weight: 700; }
   .badge-debt { color: #dc2626; font-weight: 700; }
+  .badge-fee { color: #b45309; font-weight: 700; }
 
-  /* ── Stamp ── */
-  .stamp { margin-top: 26px; display: flex; justify-content: space-between; align-items: flex-end; padding-top: 16px; border-top: 1px solid #e2e8f0; }
-  .cachet { border: 2px dashed #0284c7; color: #0369a1; border-radius: 12px; padding: 12px 20px; transform: rotate(-5deg); text-align: center; font-weight: 700; font-size: 12px; }
-  .cachet small { display: block; font-weight: 400; font-size: 10px; margin-top: 4px; }
-  .foot { margin-top: 24px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+  /* ── Agency fee highlight ── */
+  .fee-box { border: 2px solid #fed7aa; background: #fffbeb; border-radius: 10px; padding: 11px 14px; margin-bottom: 14px; }
+  .fee-box h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: #d97706; font-weight: 800; margin-bottom: 6px; }
+  .fee-box .fee-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; font-size: 12.5px; }
+  .fee-box .fee-amount { font-size: 17px; font-weight: 900; color: #b45309; }
+  .fee-box .fee-sub { font-size: 10.5px; color: #92400e; margin-top: 4px; border-top: 1px dashed #fcd34d; padding-top: 5px; }
+
+  /* ── Signatures & electronic stamp ── */
+  .stamp { margin-top: 20px; display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid #e2e8f0; }
+  .cachet-circle { width: 128px; height: 128px; border-radius: 50%; border: 3px solid #0284c7; display: flex; align-items: center; justify-content: center; transform: rotate(-8deg); color: #0369a1; flex-shrink: 0; }
+  .cachet-circle .inner { width: 110px; height: 110px; border: 1.5px dashed #0284c7; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8px; overflow: hidden; }
+  .cachet-circle .cc-top { font-size: 7px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700; }
+  .cachet-circle .cc-name { font-size: 11px; font-weight: 900; text-transform: uppercase; line-height: 1.15; margin: 3px 0; word-break: break-word; max-width: 100%; }
+  .cachet-circle .cc-sub { font-size: 6.8px; text-transform: uppercase; letter-spacing: .8px; }
+  .cachet-circle .cc-line { width: 60%; border-top: 1px solid #7dd3fc; margin: 3px 0; }
+  .foot { margin-top: 16px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
 
   /* ── Contract-specific ── */
-  .doc-title-band { text-align: center; margin: 6px 0 18px; }
-  .doc-title-band h2 { font-size: 20px; font-weight: 900; color: #0369a1; letter-spacing: .5px; text-transform: uppercase; }
+  .doc-title-band { text-align: center; margin: 4px 0 14px; }
+  .doc-title-band h2 { font-size: 19px; font-weight: 900; color: #0369a1; letter-spacing: .5px; text-transform: uppercase; }
   .doc-title-band .sub { font-size: 11px; color: #64748b; margin-top: 3px; }
-  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
-  .party { border: 2px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; }
-  .party h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 7px; font-weight: 800; color: #0369a1; }
+  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .party { border: 2px solid #e2e8f0; border-radius: 10px; padding: 11px 13px; }
+  .party h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; font-weight: 800; color: #0369a1; }
   .party p { margin: 2px 0; line-height: 1.5; }
   .party .role { font-size: 9.5px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
   .clauses { margin: 4px 0 8px; }
-  .clauses h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #475569; margin: 14px 0 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
+  .clauses h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #475569; margin: 12px 0 7px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
   .clauses ol { padding-left: 18px; }
-  .clauses li { font-size: 11px; color: #334155; line-height: 1.55; margin-bottom: 5px; }
-  .amount-hero { text-align: center; border: 2px solid #bbf7d0; background: #f0fdf4; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .clauses li { font-size: 11px; color: #334155; line-height: 1.55; margin-bottom: 4px; }
+  .amount-hero { text-align: center; border: 2px solid #bbf7d0; background: #f0fdf4; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
   .amount-hero .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: #059669; font-weight: 800; }
-  .amount-hero .val { font-size: 30px; font-weight: 900; color: #059669; margin-top: 4px; }
+  .amount-hero .val { font-size: 29px; font-weight: 900; color: #059669; margin-top: 4px; }
   .amount-hero .words { font-size: 11px; color: #475569; margin-top: 4px; font-style: italic; }
-  .sign-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 34px; }
+  .sign-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 26px; align-items: end; }
   .sign-box { text-align: center; }
   .sign-box .who { font-size: 10.5px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .5px; }
-  .sign-box .line { margin-top: 42px; border-top: 1px solid #94a3b8; padding-top: 5px; font-size: 10px; color: #94a3b8; }
+  .sign-box .line { margin-top: 40px; border-top: 1px solid #94a3b8; padding-top: 5px; font-size: 10px; color: #94a3b8; }
+  .sign-box.stamp-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 
-  @media print { body { padding: 0; } .no-print { display: none !important; } }
+  @media print {
+    body { padding: 0; }
+    .no-print { display: none !important; }
+    .doc { border-color: #0284c7; }
+  }
 `;
 
 export function printHTML(title: string, bodyHtml: string) {
@@ -122,10 +168,9 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
   const nights = r.nights;
   const paid = reservationPaid(r);
   const remaining = reservationRemaining(r);
-
-  const logoHtml = store.logo
-    ? `<img src="${store.logo}" alt="logo" />`
-    : `<div class="logo-placeholder">${store.name.charAt(0)}</div>`;
+  const fee = r.agencyFee ?? 0;
+  const rentTotal = Math.max(0, r.total - fee);
+  const mainRoomId = r.rooms[0]?.roomId;
 
   const roomRows = r.rooms.map((rr) => {
     const room = data.rooms.find((x) => x.id === rr.roomId);
@@ -153,59 +198,21 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
       </tr>`).join('')}</tbody>
     </table>` : '';
 
-  const paymentSection = r.payments.length > 0 ? `
-    <p class="tbl-head">💳 Paiements</p>
-    <table>
-      <thead><tr><th>Date</th><th>Note</th><th class="right">Montant</th></tr></thead>
-      <tbody>${r.payments.map((p) => `<tr>
-        <td>${formatDate(p.date)}</td>
-        <td>${p.note ?? '—'}</td>
-        <td class="right badge-paid">${formatDA(p.amount)}</td>
-      </tr>`).join('')}</tbody>
-    </table>` : '';
-
-  const legalItems = [
-    store.nif && `<span><strong>NIF:</strong> ${store.nif}</span>`,
-    store.nis && `<span><strong>NIS:</strong> ${store.nis}</span>`,
-    store.rc && `<span><strong>RC:</strong> ${store.rc}</span>`,
-    store.article && `<span><strong>Art:</strong> ${store.article}</span>`,
-  ].filter(Boolean).join('');
-
   return `
   <div class="doc">
-    <!-- Header -->
-    <div class="head">
-      <div class="logo-wrap">${logoHtml}</div>
-      <div class="brand-info">
-        <h1>${store.name}</h1>
-        ${store.description ? `<p class="description">${store.description}</p>` : ''}
-        <p>${store.address}</p>
-        <p>${store.phone}${store.email ? ` · ${store.email}` : ''}</p>
-        <div class="legal">${legalItems}</div>
-      </div>
-      <div class="res-meta">
-        <div class="code">N° ${r.code}</div>
-        <div class="date">Créé le ${formatDate(r.createdAt)}</div>
-      </div>
+    ${docHeader(store, r.code, `Créé le ${formatDate(r.createdAt)}`, 'Bon de Location')}
+
+    <!-- Owner of the apartment + client -->
+    <div class="grid2">
+      ${ownerSection(data, mainRoomId)}
+      ${clientSection(client, '👤 Client')}
     </div>
 
-    <!-- Client + Dates -->
-    <div class="grid2">
-      <div class="section blue">
-        <h3>👤 Client</h3>
-        <p><strong>${client ? `${client.firstName} ${client.lastName}` : '—'}</strong></p>
-        ${client?.sexe ? `<p>${client.sexe === 'M' ? 'Masculin' : 'Féminin'}${client.profession ? ` · ${client.profession}` : ''}</p>` : ''}
-        <p>${client?.phone ?? ''}${client?.phone2 ? ` / ${client.phone2}` : ''}</p>
-        ${client?.email ? `<p>${client.email}</p>` : ''}
-        ${client?.city ? `<p>${client.city}${client.address ? `, ${client.address}` : ''}</p>` : ''}
-        ${client?.documentType ? `<p>Pièce: ${client.documentNumber ?? '—'} (${client.documentType})</p>` : ''}
-      </div>
-      <div class="section green">
-        <h3>📅 Location</h3>
-        <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
-        <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
-        <p><strong>Durée:</strong> ${durationLabel(data, r)}</p>
-      </div>
+    <div class="section green" style="margin-bottom:14px">
+      <h3>📅 Location</h3>
+      <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
+      <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
+      <p><strong>Durée:</strong> ${durationLabel(data, r)}</p>
     </div>
 
     <!-- Apartments -->
@@ -216,14 +223,16 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
     </table>
 
     ${serviceSection}
-    ${paymentSection}
+    ${agencyFeeBox(data, r)}
+    ${paymentsTable(r.payments)}
 
     <!-- Totals -->
     <div class="totals-wrap">
+      <div class="row"><span>Loyer</span><span>${formatDA(rentTotal)}</span></div>
+      ${fee > 0 ? `<div class="row"><span>Frais d'agence</span><span class="badge-fee">${formatDA(fee)}</span></div>` : ''}
       <div class="row"><span>Total location</span><strong>${formatDA(r.total)}</strong></div>
       <div class="row"><span>Total payé</span><span class="badge-paid">${formatDA(paid)}</span></div>
-      <div class="row"><span>Reste dû</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
-      <div class="row grand"><span>Net à payer</span><span>${formatDA(r.total)}</span></div>
+      <div class="row grand"><span>Reste dû</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
     </div>
 
     <!-- Stamp -->
@@ -232,15 +241,26 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
         <p>Le client reconnaît avoir pris connaissance des conditions de séjour.</p>
         <p style="margin-top:28px">Signature client : ____________________</p>
       </div>
-      <div class="cachet">${store.name}<small>Cachet &amp; Signature</small></div>
+      ${eStamp(store)}
     </div>
 
-    <div class="foot">Document généré par ${store.name}${store.phone ? ` — ${store.phone}` : ''} — Merci de votre confiance.</div>
+    <div class="foot">Document généré par ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — Merci de votre confiance.</div>
   </div>`;
 }
 
 // ─── Shared building blocks for the new documents ───────────────────────────
 
+/** Bold phone number, with an optional light label in front of it. */
+function tel(number?: string, label = 'Tél :'): string {
+  if (!number) return '';
+  return `<p><span class="tel-label">${label}</span> <span class="tel">${number}</span></p>`;
+}
+
+/**
+ * Header shared by every printed document: the logo sits centred at the very
+ * top, the agency identity right under it, then a band carrying the document
+ * kind, its number and its date.
+ */
 function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: string): string {
   const logoHtml = store.logo
     ? `<img src="${store.logo}" alt="logo" />`
@@ -253,19 +273,99 @@ function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: 
   ].filter(Boolean).join('');
   return `
     <div class="head">
-      <div class="logo-wrap">${logoHtml}</div>
+      <div class="logo-center">${logoHtml}</div>
       <div class="brand-info">
         <h1>${store.name}</h1>
         ${store.description ? `<p class="description">${store.description}</p>` : ''}
-        <p>${store.address}</p>
-        <p>${store.phone}${store.email ? ` · ${store.email}` : ''}</p>
+        ${store.address ? `<p>${store.address}</p>` : ''}
+        ${tel(store.phone)}
+        ${store.email ? `<p>${store.email}</p>` : ''}
         <div class="legal">${legalItems}</div>
       </div>
-      <div class="res-meta">
-        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#0284c7">${docTitle}</div>
-        <div class="code">N° ${code}</div>
-        <div class="date">${dateLabel}</div>
+      <div class="doc-band">
+        <span class="kind">${docTitle}</span>
+        <span class="code">N° ${code}</span>
+        <span class="date">${dateLabel}</span>
       </div>
+    </div>`;
+}
+
+/**
+ * Round electronic stamp: the agency name inside a double circle. Long names
+ * are typeset smaller so they always stay inside the disc.
+ */
+function eStamp(store: StoreInfo): string {
+  const name = store.name ?? '';
+  const size = name.length > 30 ? 8 : name.length > 20 ? 9.5 : 11;
+  return `
+    <div class="cachet-circle">
+      <div class="inner">
+        <div class="cc-top">Cachet</div>
+        <div class="cc-line"></div>
+        <div class="cc-name" style="font-size:${size}px">${name}</div>
+        <div class="cc-line"></div>
+        <div class="cc-sub">Signature électronique</div>
+      </div>
+    </div>`;
+}
+
+/** Owner block of an apartment (propriétaire du bien). */
+function ownerSection(data: AppData, roomId: string | undefined, title = '🔑 Propriétaire du bien'): string {
+  const room = roomId ? data.rooms.find((r) => r.id === roomId) : undefined;
+  const linked = room?.ownerClientId ? clientById(data, room.ownerClientId) : undefined;
+  const name = room?.ownerName || (linked ? `${linked.firstName} ${linked.lastName}` : '');
+  const phone = room?.ownerPhone || linked?.phone || '';
+  const address = [linked?.address, linked?.city].filter(Boolean).join(', ');
+  if (!name && !phone) {
+    return `<div class="section orange"><h3>${title}</h3><p>—</p></div>`;
+  }
+  return `
+    <div class="section orange">
+      <h3>${title}</h3>
+      <p><strong>${name || '—'}</strong></p>
+      ${tel(phone)}
+      ${address ? `<p>${address}</p>` : ''}
+      ${room ? `<p><span class="tel-label">Bien :</span> ${room.name}${room.commune ? ` — ${room.commune}` : ''}</p>` : ''}
+    </div>`;
+}
+
+/** Owner party card used on the contract / versement (same data, party look). */
+function ownerParty(data: AppData, roomId: string | undefined): string {
+  const room = roomId ? data.rooms.find((r) => r.id === roomId) : undefined;
+  const linked = room?.ownerClientId ? clientById(data, room.ownerClientId) : undefined;
+  const name = room?.ownerName || (linked ? `${linked.firstName} ${linked.lastName}` : '');
+  const phone = room?.ownerPhone || linked?.phone || '';
+  const address = [linked?.address, linked?.city].filter(Boolean).join(', ');
+  return `
+    <div class="party">
+      <h3>Le Propriétaire</h3>
+      <p class="role">Propriétaire du bien</p>
+      <p><strong>${name || '—'}</strong></p>
+      ${tel(phone)}
+      ${address ? `<p>${address}</p>` : ''}
+      ${room ? `<p><span class="tel-label">Bien :</span> ${room.name}${room.commune ? ` — ${room.commune}` : ''}</p>` : ''}
+    </div>`;
+}
+
+/** Agency fee box (+ the employee share when one was set on the location). */
+function agencyFeeBox(data: AppData, r: Reservation): string {
+  const fee = r.agencyFee ?? 0;
+  if (fee <= 0) return '';
+  const commission = r.agencyFeeCommission ?? 0;
+  const worker = r.agencyFeeWorkerId
+    ? data.workers.find((w) => w.id === r.agencyFeeWorkerId)
+    : undefined;
+  const sub = commission > 0 && worker
+    ? `<div class="fee-sub"><strong>Commission employé :</strong> ${worker.name} — ${r.agencyFeePercent ?? 0}% des frais, soit ${formatDA(commission)}</div>`
+    : '';
+  return `
+    <div class="fee-box">
+      <h3>💼 Frais d'agence</h3>
+      <div class="fee-row">
+        <span>Montant des frais d'agence (inclus dans le total)</span>
+        <span class="fee-amount">${formatDA(fee)}</span>
+      </div>
+      ${sub}
     </div>`;
 }
 
@@ -275,7 +375,7 @@ function clientSection(client: Client | undefined, title = '👤 Client'): strin
       <h3>${title}</h3>
       <p><strong>${client ? `${client.firstName} ${client.lastName}` : '—'}</strong></p>
       ${client?.sexe ? `<p>${client.sexe === 'M' ? 'Masculin' : 'Féminin'}${client.profession ? ` · ${client.profession}` : ''}</p>` : ''}
-      <p>${client?.phone ?? ''}${client?.phone2 ? ` / ${client.phone2}` : ''}</p>
+      ${tel(client?.phone ? `${client.phone}${client.phone2 ? ` / ${client.phone2}` : ''}` : '')}
       ${client?.email ? `<p>${client.email}</p>` : ''}
       ${client?.city || client?.address ? `<p>${[client?.address, client?.city].filter(Boolean).join(', ')}</p>` : ''}
       ${client?.documentType ? `<p>Pièce: ${client.documentNumber ?? '—'} (${client.documentType})</p>` : ''}
@@ -319,9 +419,9 @@ function stampSection(store: StoreInfo, signerLabel: string): string {
         <p>Document établi en deux exemplaires.</p>
         <p style="margin-top:28px">Signature ${signerLabel} : ____________________</p>
       </div>
-      <div class="cachet">${store.name}<small>Cachet &amp; Signature</small></div>
+      ${eStamp(store)}
     </div>
-    <div class="foot">Document généré par ${store.name}${store.phone ? ` — ${store.phone}` : ''} — Merci de votre confiance.</div>`;
+    <div class="foot">Document généré par ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — Merci de votre confiance.</div>`;
 }
 
 // ─── Facture de vente ────────────────────────────────────────────────────────
@@ -344,7 +444,7 @@ export function buildSaleInvoiceHTML(data: AppData, sale: Sale, store: StoreInfo
     <div class="section orange">
       <h3>🤝 Médiateur</h3>
       <p><strong>${mediator.firstName} ${mediator.lastName}</strong></p>
-      <p>${mediator.phone}</p>
+      ${tel(mediator.phone)}
       <p><strong>Commission:</strong> ${formatDA(sale.mediatorCommission)}${sale.commissionType === 'percent' && sale.commissionPercent ? ` (${sale.commissionPercent}% du prix de vente)` : ''}</p>
     </div>` : '';
 
@@ -482,19 +582,23 @@ export function buildReservationPaymentReceiptHTML(
     .map((rr) => data.rooms.find((x) => x.id === rr.roomId)?.name)
     .filter(Boolean)
     .join(', ');
+  const fee = r.agencyFee ?? 0;
   const infos = `
     <div class="grid2">
+      ${ownerSection(data, r.rooms[0]?.roomId)}
       ${clientSection(client)}
-      <div class="section violet">
-        <h3>📋 Location ${r.code}</h3>
-        <p><strong>Appartement(s):</strong> ${roomsList || '—'}</p>
-        <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
-        <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
-        <p><strong>Durée:</strong> ${durationLabel(data, r)}</p>
-      </div>
     </div>
+    <div class="section violet" style="margin-bottom:14px">
+      <h3>📋 Location ${r.code}</h3>
+      <p><strong>Appartement(s):</strong> ${roomsList || '—'}</p>
+      <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
+      <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
+      <p><strong>Durée:</strong> ${durationLabel(data, r)}</p>
+    </div>
+    ${agencyFeeBox(data, r)}
     ${paymentsTable(r.payments)}`;
   return receiptShell(store, r.code, 'Reçu de Paiement — Location', payment, infos, [
+    ...(fee > 0 ? [{ label: "Dont frais d'agence", value: formatDA(fee), cls: 'badge-fee' }] : []),
     { label: 'Total location', value: formatDA(r.total) },
     { label: 'Total payé', value: formatDA(reservationPaid(r)), cls: 'badge-paid' },
     { label: 'Reste dû', value: formatDA(reservationRemaining(r)), cls: reservationRemaining(r) > 0 ? 'badge-debt' : 'badge-paid' },
@@ -522,7 +626,7 @@ export function buildMediatorPaymentReceiptHTML(
       <div class="section blue">
         <h3>🤝 Médiateur</h3>
         <p><strong>${mediator.firstName} ${mediator.lastName}</strong></p>
-        <p>${mediator.phone}${mediator.phone2 ? ` / ${mediator.phone2}` : ''}</p>
+        ${tel(`${mediator.phone}${mediator.phone2 ? ` / ${mediator.phone2}` : ''}`)}
         ${mediator.email ? `<p>${mediator.email}</p>` : ''}
         ${mediator.city || mediator.address ? `<p>${[mediator.address, mediator.city].filter(Boolean).join(', ')}</p>` : ''}
         ${mediator.cin ? `<p>CIN: ${mediator.cin}</p>` : ''}
@@ -727,6 +831,9 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
   const nights = r.nights;
   const paid = reservationPaid(r);
   const remaining = reservationRemaining(r);
+  const fee = r.agencyFee ?? 0;
+  const rentTotal = Math.max(0, r.total - fee);
+  const mainRoomId = r.rooms[0]?.roomId;
 
   const roomRows = r.rooms.map((rr) => {
     const room = data.rooms.find((x) => x.id === rr.roomId);
@@ -751,20 +858,23 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
       <div class="sub">N° ${r.code} — établi le ${formatDate(r.createdAt)}</div>
     </div>
 
-    <div class="parties">
+    <!-- Parties: the agency (mandataire), the owner of the apartment, the tenant -->
+    <div class="parties" style="grid-template-columns:1fr 1fr 1fr">
       <div class="party">
         <h3>Le Bailleur / Mandataire</h3>
         <p class="role">Agence</p>
         <p><strong>${store.name}</strong></p>
         ${store.address ? `<p>${store.address}</p>` : ''}
-        ${store.phone ? `<p>Tél : ${store.phone}${store.email ? ` · ${store.email}` : ''}</p>` : ''}
+        ${tel(store.phone)}
+        ${store.email ? `<p>${store.email}</p>` : ''}
         ${store.rc ? `<p>RC : ${store.rc}${store.nif ? ` · NIF : ${store.nif}` : ''}</p>` : ''}
       </div>
+      ${ownerParty(data, mainRoomId)}
       <div class="party">
         <h3>Le Locataire</h3>
         <p class="role">Client</p>
         <p><strong>${client ? `${client.firstName} ${client.lastName}` : '—'}</strong></p>
-        ${client?.phone ? `<p>Tél : ${client.phone}${client.phone2 ? ` / ${client.phone2}` : ''}</p>` : ''}
+        ${tel(client?.phone ? `${client.phone}${client.phone2 ? ` / ${client.phone2}` : ''}` : '')}
         ${client?.address || client?.city ? `<p>${[client?.address, client?.city].filter(Boolean).join(', ')}</p>` : ''}
         ${client?.documentType ? `<p>Pièce : ${client.documentNumber ?? '—'} (${client.documentType})</p>` : ''}
       </div>
@@ -785,19 +895,24 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
       </div>
       <div class="section blue">
         <h3>💰 Conditions financières</h3>
-        <p><strong>Loyer total :</strong> ${formatDA(r.total)}</p>
+        <p><strong>Loyer :</strong> ${formatDA(rentTotal)}</p>
+        ${fee > 0 ? `<p><strong>Frais d'agence :</strong> <span class="badge-fee">${formatDA(fee)}</span></p>` : ''}
+        <p><strong>Total à payer :</strong> ${formatDA(r.total)}</p>
         <p><strong>Déjà versé :</strong> ${formatDA(paid)}</p>
         <p><strong>Reste dû :</strong> <span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></p>
       </div>
     </div>
 
+    ${agencyFeeBox(data, r)}
+
     <div class="clauses">
       <h4>Conditions générales</h4>
       <ol>
         <li>La présente location est consentie pour la période du ${formatDate(r.checkIn)} au ${formatDate(r.checkOut)}, soit ${durationLabel(data, r)}.</li>
-        <li>Le montant total de la location s'élève à ${formatDA(r.total)}, payable selon l'échéancier convenu entre les parties.</li>
+        <li>Le montant total de la location s'élève à ${formatDA(r.total)}${fee > 0 ? `, dont ${formatDA(fee)} de frais d'agence` : ''}, payable selon l'échéancier convenu entre les parties.</li>
+        ${fee > 0 ? `<li>Les frais d'agence de ${formatDA(fee)} rémunèrent l'intermédiation de l'agence et restent acquis à celle-ci.</li>` : ''}
         <li>Le locataire s'engage à occuper le bien loué paisiblement et à le restituer dans l'état où il l'a reçu.</li>
-        <li>Toute prolongation au-delà de la date de départ pourra donner lieu à une facturation supplémentaire au tarif journalier en vigueur.</li>
+        <li>Toute prolongation au-delà de la date de départ pourra donner lieu à une facturation supplémentaire au tarif en vigueur.</li>
         <li>Le locataire demeure responsable de toute dégradation causée au bien pendant la durée de la location.</li>
         <li>Le présent contrat est établi en deux exemplaires originaux, un pour chaque partie.</li>
       </ol>
@@ -806,11 +921,15 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
     ${paymentsTable(r.payments)}
 
     <div class="sign-grid">
-      <div class="sign-box"><p class="who">Le Bailleur</p><div class="line">${store.name}</div></div>
       <div class="sign-box"><p class="who">Le Locataire</p><div class="line">${client ? `${client.firstName} ${client.lastName}` : 'Signature'}</div></div>
+      <div class="sign-box stamp-cell">
+        <p class="who">Cachet de l'agence</p>
+        ${eStamp(store)}
+      </div>
+      <div class="sign-box"><p class="who">Le Bailleur</p><div class="line">${store.name}</div></div>
     </div>
 
-    <div class="foot">Document généré par ${store.name}${store.phone ? ` — ${store.phone}` : ''} — Merci de votre confiance.</div>
+    <div class="foot">Document généré par ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — Merci de votre confiance.</div>
   </div>`;
 }
 
@@ -820,7 +939,9 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
   const client = clientById(data, r.clientId);
   const paid = reservationPaid(r);
   const remaining = reservationRemaining(r);
-  const nights = r.nights;
+  const fee = r.agencyFee ?? 0;
+  const rentTotal = Math.max(0, r.total - fee);
+  const mainRoomId = r.rooms[0]?.roomId;
   const roomsList = r.rooms
     .map((rr) => data.rooms.find((x) => x.id === rr.roomId)?.name)
     .filter(Boolean)
@@ -842,20 +963,35 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
       <div class="words">Reçu de ${client ? `${client.firstName} ${client.lastName}` : 'la part du client'} la somme ci-dessus.</div>
     </div>
 
+    <!-- Owner of the apartment + client who paid -->
     <div class="grid2">
-      ${clientSection(client, '👤 Versé par')}
+      ${ownerSection(data, mainRoomId)}
+      ${clientSection(client, '👤 Versé par (Client)')}
+    </div>
+
+    <div class="grid2">
       <div class="section violet">
         <h3>📋 Location ${r.code}</h3>
         <p><strong>Appartement(s) :</strong> ${roomsList || '—'}</p>
         <p><strong>Séjour :</strong> ${formatDate(r.checkIn)} → ${formatDate(r.checkOut)}</p>
         <p><strong>Durée :</strong> ${durationLabel(data, r)}</p>
       </div>
+      <div class="section green">
+        <h3>💰 Détail du montant</h3>
+        <p><strong>Loyer :</strong> ${formatDA(rentTotal)}</p>
+        ${fee > 0 ? `<p><strong>Frais d'agence :</strong> <span class="badge-fee">${formatDA(fee)}</span></p>` : ''}
+        <p><strong>Total location :</strong> ${formatDA(r.total)}</p>
+      </div>
     </div>
+
+    ${agencyFeeBox(data, r)}
 
     ${paymentsTable(r.payments)}
 
     <div class="totals-wrap">
-      <div class="row"><span>Loyer total</span><strong>${formatDA(r.total)}</strong></div>
+      <div class="row"><span>Loyer</span><span>${formatDA(rentTotal)}</span></div>
+      ${fee > 0 ? `<div class="row"><span>Frais d'agence</span><span class="badge-fee">${formatDA(fee)}</span></div>` : ''}
+      <div class="row"><span>Total location</span><strong>${formatDA(r.total)}</strong></div>
       <div class="row"><span>Total versé</span><span class="badge-paid">${formatDA(paid)}</span></div>
       <div class="row grand"><span>Reste dû</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
     </div>

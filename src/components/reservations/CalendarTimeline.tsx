@@ -8,7 +8,7 @@ import { GradientButton } from '@/components/ui/GradientButton';
 import { useAppData } from '@/store/hooks';
 import { useI18n } from '@/i18n';
 import { cn, todayISO, formatDA, formatDate } from '@/lib/utils';
-import { categoryName, clientName, clientById } from '@/lib/lookups';
+import { categoryName, clientName, clientById, activeRooms } from '@/lib/lookups';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
 import { reservationRemaining } from '@/store/selectors';
 import type { Reservation, ReservationStatus } from '@/types';
@@ -87,10 +87,13 @@ export function CalendarTimeline({
     setPopover({ res: r, x: rect.left, y: rect.bottom + 6 });
   };
 
+  // Soft-deleted apartments never show on the timeline.
+  const liveRooms = useMemo(() => activeRooms(data.rooms), [data.rooms]);
+
   const filteredRooms = useMemo(() => {
-    if (selectedRoomId === 'all') return data.rooms;
-    return data.rooms.filter((room) => room.id === selectedRoomId);
-  }, [data.rooms, selectedRoomId]);
+    if (selectedRoomId === 'all') return liveRooms;
+    return liveRooms.filter((room) => room.id === selectedRoomId);
+  }, [liveRooms, selectedRoomId]);
 
   // Professional summary metrics for the visible month.
   const stats = useMemo(() => {
@@ -101,14 +104,14 @@ export function CalendarTimeline({
 
     // Occupancy = reserved room-day cells / total room-days in month.
     let occupied = 0;
-    for (const room of data.rooms) {
+    for (const room of liveRooms) {
       for (const d of days) {
         if (monthRes.some((r) => r.rooms.some((rr) => rr.roomId === room.id) && r.checkIn <= d.iso && r.checkOut > d.iso)) {
           occupied++;
         }
       }
     }
-    const totalCells = data.rooms.length * daysInMonth;
+    const totalCells = liveRooms.length * daysInMonth;
     const occupancy = totalCells > 0 ? Math.round((occupied / totalCells) * 100) : 0;
 
     // Rooms free right now (today).
@@ -118,10 +121,10 @@ export function CalendarTimeline({
         r.rooms.forEach((rr) => busyToday.add(rr.roomId));
       }
     }
-    const freeToday = Math.max(0, data.rooms.length - busyToday.size);
+    const freeToday = Math.max(0, liveRooms.length - busyToday.size);
 
-    return { count: monthRes.length, occupancy, freeToday, totalRooms: data.rooms.length };
-  }, [data.reservations, data.rooms, statusFilter, monthStart, monthEnd, daysInMonth, days, today]);
+    return { count: monthRes.length, occupancy, freeToday, totalRooms: liveRooms.length };
+  }, [data.reservations, liveRooms, statusFilter, monthStart, monthEnd, daysInMonth, days, today]);
 
   // Calendar Month Grid for Selected Single Room Focus View
   const gridCells = useMemo(() => {
@@ -195,7 +198,7 @@ export function CalendarTimeline({
                 className="bg-transparent border-0 text-xs font-semibold text-ink-primary focus:outline-none focus:ring-0 cursor-pointer pr-4"
               >
                 <option value="all">{t('common.all')} ({t('nav.chambres')})</option>
-                {data.rooms.map((r) => (
+                {liveRooms.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name} · {categoryName(data, r.categoryId)}
                   </option>

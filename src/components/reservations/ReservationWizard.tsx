@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Check, UserPlus, Search, ArrowLeft, ArrowRight, Building2,
   CalendarDays, Moon, Sparkles, UserCheck, X, ChevronLeft, ChevronRight,
-  AlertTriangle, Calendar, Users, FileText,
+  AlertTriangle, Calendar, Users, FileText, Briefcase, Percent, HardHat,
 } from 'lucide-react';
 import { useApp } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -15,7 +15,7 @@ import { ClientForm } from '@/components/forms/ClientForm';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
 import { reservationPaid } from '@/store/selectors';
 import { cn, formatDA, nightsBetween, monthsBetween, addMonthsISO, todayISO, initials } from '@/lib/utils';
-import { rentalPeriodOf } from '@/lib/lookups';
+import { rentalPeriodOf, activeRooms } from '@/lib/lookups';
 import type { Reservation, ReservationService, ReservationStatus } from '@/types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -270,6 +270,14 @@ export function ReservationWizard({
   const [amountPaid,  setAmountPaid]  = useState('');
   const [notes,       setNotes]       = useState(editing?.notes ?? '');
 
+  // ── Frais d'agence (+ optional employee commission on that fee) ──────────
+  const [agencyFee,  setAgencyFee]  = useState(editing?.agencyFee ? String(editing.agencyFee) : '');
+  const [feeShare,   setFeeShare]   = useState(!!editing?.agencyFeeWorkerId);
+  const [feeWorkerId, setFeeWorkerId] = useState(editing?.agencyFeeWorkerId ?? '');
+  const [feePercent, setFeePercent] = useState(
+    editing?.agencyFeePercent != null ? String(editing.agencyFeePercent) : '',
+  );
+
   // Option: hide apartments that are still tied to an active/upcoming
   // reservation (checkout in the future). They reappear once that reservation
   // expires. The currently-selected apartments always stay visible.
@@ -284,22 +292,25 @@ export function ReservationWizard({
     return busy;
   }, [data.reservations, editing]);
 
+  // Soft-deleted apartments (corbeille) are never bookable.
+  const selectableRooms = useMemo(() => activeRooms(data.rooms), [data.rooms]);
+
   const visibleRooms = useMemo(() => {
-    if (!hideBusy) return data.rooms;
-    return data.rooms.filter((r) => !busyRoomIds.has(r.id) || roomIds.includes(r.id) || r.id === calendarRoomId);
-  }, [hideBusy, data.rooms, busyRoomIds, roomIds, calendarRoomId]);
+    if (!hideBusy) return selectableRooms;
+    return selectableRooms.filter((r) => !busyRoomIds.has(r.id) || roomIds.includes(r.id) || r.id === calendarRoomId);
+  }, [hideBusy, selectableRooms, busyRoomIds, roomIds, calendarRoomId]);
 
   // Sync calendarRoomId and roomIds if empty but rooms are loaded
   useEffect(() => {
-    if (data.rooms.length > 0) {
+    if (selectableRooms.length > 0) {
       if (!calendarRoomId) {
-        setCalendarRoomId(data.rooms[0].id);
+        setCalendarRoomId(selectableRooms[0].id);
       }
       if (roomIds.length === 0 && !editing) {
-        setRoomIds([data.rooms[0].id]);
+        setRoomIds([selectableRooms[0].id]);
       }
     }
-  }, [data.rooms, calendarRoomId, roomIds, editing]);
+  }, [selectableRooms, calendarRoomId, roomIds, editing]);
 
   // ── Derived values ────────────────────────────────────────────────────────
   // The apartment drives the billing unit: nightly apartments are picked on the
@@ -331,7 +342,19 @@ export function ReservationWizard({
     }, 0),
     [services, data.services]);
 
-  const computedTotal = roomsTotal + servicesTotal;
+  // The agency fee is a billed line like any other: it is part of the total the
+  // client owes, so it flows into the computed total (and therefore into the
+  // paid / remaining split, the income and the debts).
+  const agencyFeeNum  = agencyFee === '' ? 0 : Math.max(0, Number(agencyFee) || 0);
+  const feePercentNum = feePercent === '' ? 0 : Math.min(100, Math.max(0, Number(feePercent) || 0));
+  // A commission already paid to the employee is frozen: it belongs to that
+  // worker's payment history and must not be re-priced by a later edit.
+  const commissionLocked = !!editing?.agencyFeeCommissionSettled;
+  const commissionOn  = feeShare && !!feeWorkerId && agencyFeeNum > 0 && feePercentNum > 0;
+  const commissionAmount = commissionOn ? Math.round((agencyFeeNum * feePercentNum) / 100) : 0;
+  const feeWorker = data.workers.find(w => w.id === feeWorkerId);
+
+  const computedTotal = roomsTotal + servicesTotal + agencyFeeNum;
   const finalTotal    = editedTotal === '' ? computedTotal : Number(editedTotal);
   const alreadyPaid   = editing ? reservationPaid(editing) : 0;
   const paidNum       = amountPaid === '' ? (editing ? alreadyPaid : finalTotal) : Number(amountPaid);
@@ -410,7 +433,14 @@ export function ReservationWizard({
         clientId, rooms: resRooms, services: resServices, checkIn, checkOut,
         checkInTime, checkOutTime, nights, total: finalTotal,
         notes: notes.trim() || undefined,
+        agencyFee: agencyFeeNum,
       };
+      if (!commissionLocked) {
+        patch.agencyFeeCommissionEnabled = commissionOn;
+        patch.agencyFeeWorkerId = commissionOn ? feeWorkerId : undefined;
+        patch.agencyFeePercent = commissionOn ? feePercentNum : undefined;
+        patch.agencyFeeCommission = commissionAmount;
+      }
       // Only touch the payment set when the amount paid actually changed. A
       // positive delta records an extra payment, a negative one records a
       // correction — both persist, so the card, the dashboard income and the
@@ -431,6 +461,11 @@ export function ReservationWizard({
         payments: paidNum > 0 ? [{ id: `pay-${Date.now()}`, amount: paidNum, date: today, note: 'Paiement initial' }] : [],
         status,
         notes: notes.trim() || undefined,
+        agencyFee: agencyFeeNum,
+        agencyFeeCommissionEnabled: commissionOn,
+        agencyFeeWorkerId: commissionOn ? feeWorkerId : undefined,
+        agencyFeePercent: commissionOn ? feePercentNum : undefined,
+        agencyFeeCommission: commissionAmount,
       });
       toast.success(t('res.createdOk'));
     }
@@ -944,6 +979,115 @@ export function ReservationWizard({
                           </SummaryCard>
                         )}
 
+                        {/* -- Frais d'agence + commission employe -- */}
+                        <div className="rounded-2xl border-2 border-amber-200 bg-white overflow-hidden shadow-sm">
+                          <div className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3">
+                            <Briefcase size={15} className="text-white" />
+                            <p className="text-white text-xs font-bold uppercase tracking-wide">{t('fee.title')}</p>
+                          </div>
+                          <div className="p-5 space-y-4">
+                            <div>
+                              <label className="text-xs font-bold text-ink-muted block mb-1.5">{t('fee.amount')} (DA)</label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={agencyFee}
+                                onChange={e => setAgencyFee(e.target.value)}
+                                placeholder="0"
+                                className="w-full h-11 rounded-xl border-2 border-slate-200 px-4 text-sm font-bold text-ink-primary outline-none focus:border-amber-400 transition-all"
+                              />
+                              <p className="mt-1.5 text-[11px] text-ink-muted">{t('fee.amountHint')}</p>
+                            </div>
+
+                            {/* Toggle: share a % of the fee with an employee */}
+                            <div className="flex items-center gap-3 border-t border-slate-100 pt-4">
+                              <button
+                                type="button"
+                                disabled={commissionLocked}
+                                onClick={() => setFeeShare(v => !v)}
+                                className={cn('relative h-5 w-9 rounded-full transition-colors shrink-0', feeShare ? 'bg-amber-500' : 'bg-slate-300', commissionLocked && 'opacity-50 cursor-not-allowed')}
+                              >
+                                <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', feeShare ? 'translate-x-4' : 'translate-x-0.5')} />
+                              </button>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-ink-primary">{t('fee.shareToggle')}</p>
+                                <p className="text-[11px] text-ink-muted">{t('fee.shareHint')}</p>
+                              </div>
+                            </div>
+
+                            {feeShare && (
+                              <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-xs font-bold text-ink-muted mb-1.5 flex items-center gap-1.5">
+                                      <HardHat size={12} /> {t('fee.worker')}
+                                    </label>
+                                    <select
+                                      value={feeWorkerId}
+                                      disabled={commissionLocked}
+                                      onChange={e => setFeeWorkerId(e.target.value)}
+                                      className="w-full h-11 rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-ink-primary outline-none focus:border-amber-400 transition-all"
+                                    >
+                                      <option value="">{t('fee.selectWorker')}</option>
+                                      {data.workers.filter(w => w.active).map(w => (
+                                        <option key={w.id} value={w.id}>{w.name} - {w.role}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs font-bold text-ink-muted mb-1.5 flex items-center gap-1.5">
+                                      <Percent size={12} /> {t('fee.percent')}
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={100}
+                                      value={feePercent}
+                                      disabled={commissionLocked}
+                                      onChange={e => setFeePercent(e.target.value)}
+                                      placeholder="0"
+                                      className="w-full h-11 rounded-xl border-2 border-slate-200 px-4 text-sm font-bold text-ink-primary outline-none focus:border-amber-400 transition-all"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Quick percentages */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-[11px] text-ink-muted">{t('fee.quickPercent')}</span>
+                                  {[5, 10, 20, 30, 50].map(pc => (
+                                    <button
+                                      key={pc}
+                                      type="button"
+                                      onClick={() => setFeePercent(String(pc))}
+                                      className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-ink-secondary hover:border-amber-300 hover:text-amber-700"
+                                    >
+                                      {pc}%
+                                    </button>
+                                  ))}
+                                </div>
+
+                                {commissionOn && (
+                                  <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold text-amber-800 truncate">{feeWorker?.name}</p>
+                                      <p className="text-[11px] text-amber-700">
+                                        {feePercentNum}% {t('fee.of')} {formatDA(agencyFeeNum)}
+                                      </p>
+                                    </div>
+                                    <span className="text-lg font-extrabold text-amber-700">{formatDA(commissionAmount)}</span>
+                                  </div>
+                                )}
+                                {commissionLocked && (
+                                  <p className="text-[11px] font-semibold text-emerald-600">{t('fee.settled')}</p>
+                                )}
+                                {feeShare && !commissionOn && !commissionLocked && (
+                                  <p className="text-[11px] text-rose-500 font-medium">{t('fee.incompleteHint')}</p>
+                                )}
+                              </motion.div>
+                            )}
+                          </div>
+                        </div>
+
                         {/* Payment total box */}
                         <div className="rounded-2xl border-2 border-brand-200 bg-white overflow-hidden shadow-sm">
                           <div className="bg-grad-primary px-5 py-3">
@@ -957,6 +1101,12 @@ export function ReservationWizard({
                             {servicesTotal > 0 && (
                               <div className="flex justify-between text-sm text-ink-secondary">
                                 <span>Services</span><span>{formatDA(servicesTotal)}</span>
+                              </div>
+                            )}
+                            {agencyFeeNum > 0 && (
+                              <div className="flex justify-between text-sm text-amber-700 font-semibold">
+                                <span className="flex items-center gap-1.5"><Briefcase size={13} /> {t('fee.title')}</span>
+                                <span>{formatDA(agencyFeeNum)}</span>
                               </div>
                             )}
                             <div className="flex justify-between text-sm font-bold border-t border-slate-100 pt-3">

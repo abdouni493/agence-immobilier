@@ -11,6 +11,22 @@ export function clientById(data: AppData, id: string): Client | undefined {
   return data.clients.find((x) => x.id === id);
 }
 
+/**
+ * Apartments the user can still work with. Soft-deleted apartments stay in
+ * `data.rooms` so old locations/ventes keep resolving their name, but they must
+ * never appear in a picker, a grid or a KPI.
+ */
+export function activeRooms(rooms: Room[]): Room[] {
+  return rooms.filter((r) => !r.deleted);
+}
+
+/** Soft-deleted apartments (the corbeille), newest deletion first. */
+export function deletedRooms(rooms: Room[]): Room[] {
+  return rooms
+    .filter((r) => r.deleted)
+    .sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''));
+}
+
 export function roomName(data: AppData, id: string): string {
   return data.rooms.find((r) => r.id === id)?.name ?? '—';
 }

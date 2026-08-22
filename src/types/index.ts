@@ -102,6 +102,12 @@ export interface Room {
   mediatorId?: string; // médiateur associé à cet appartement (optionnel)
   salePrice?: number; // prix de vente affiché
   purchasePrice?: number; // prix d'achat par l'agence
+  /** Photos of the apartment (public URLs from the `apartment-photos` bucket). */
+  photos?: string[];
+  /** Soft delete: a "deleted" apartment stays in the DB as a draft/brouillon. */
+  deleted?: boolean;
+  /** ISO datetime of the soft delete, used to sort the trash list. */
+  deletedAt?: string;
 }
 
 export interface Maintenance {
@@ -158,6 +164,21 @@ export interface Reservation {
   status: ReservationStatus;
   createdAt: string;
   notes?: string; // client-provided description/remarque
+  // ── Frais d'agence (agency fee) ──────────────────────────────────────────
+  /** Agency fee billed on top of the rent + services. Included in `total`. */
+  agencyFee?: number;
+  /** True when a share of the agency fee is owed to an employee. */
+  agencyFeeCommissionEnabled?: boolean;
+  /** Employee earning the commission on the agency fee. */
+  agencyFeeWorkerId?: string;
+  /** Percentage of the agency fee that employee receives (0–100). */
+  agencyFeePercent?: number;
+  /** Frozen commission amount in DA (agencyFee × agencyFeePercent / 100). */
+  agencyFeeCommission?: number;
+  /** True once the commission was included in a worker payment. */
+  agencyFeeCommissionSettled?: boolean;
+  /** The worker payment that settled this commission (history link). */
+  agencyFeeCommissionPaymentId?: string;
 }
 
 // ============ MEDIATORS ============
@@ -230,6 +251,8 @@ export interface Advance {
   description?: string;
   amount: number;
   deducted: boolean;
+  /** Payment that absorbed this advance — moves it into the history. */
+  workerPaymentId?: string;
 }
 
 export interface Absence {
@@ -237,6 +260,10 @@ export interface Absence {
   date: string;
   description?: string;
   cost: number;
+  /** True once deducted from a payment (kept out of the next payment). */
+  deducted?: boolean;
+  /** Payment that absorbed this absence — moves it into the history. */
+  workerPaymentId?: string;
 }
 
 export interface WorkerPayment {
@@ -244,6 +271,11 @@ export interface WorkerPayment {
   date: string;
   amount: number;
   description?: string;
+  // Frozen breakdown of what the payment was made of (payment history).
+  gross?: number;
+  commissionsTotal?: number;
+  absencesTotal?: number;
+  advancesTotal?: number;
 }
 
 export interface Worker {

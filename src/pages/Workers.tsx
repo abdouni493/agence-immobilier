@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   HardHat, Plus, Pencil, Trash2, Eye, KeyRound, Wallet, Phone, CalendarDays, Check,
-  ArrowLeft, ArrowRight, Shield, Coins, CalendarX, User,
+  ArrowLeft, ArrowRight, Shield, Coins, CalendarX, User, Briefcase, Building2, History,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
+import { useAppData } from '@/store/hooks';
 import { useI18n } from '@/i18n';
 import { useToast } from '@/components/ui/Toast';
 import { PageHeader, EmptyState, SearchInput, Stat, Tabs } from '@/components/ui/Misc';
@@ -14,7 +15,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TextField, SelectField, Toggle, RadioGroup, Checkbox } from '@/components/ui/Field';
-import { workerPayCalc } from '@/store/selectors';
+import { workerPayCalc, workerCommissions } from '@/store/selectors';
+import { clientName } from '@/lib/lookups';
 import { MODULE_ACTIONS, MODULE_ORDER, fullPermissions } from '@/data/constants';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, todayISO, initials, cn } from '@/lib/utils';
@@ -396,8 +398,18 @@ function WorkerProfile({ worker, onClose }: { worker: Worker; onClose: () => voi
   const addAbsence = useApp((s) => s.addWorkerAbsence);
   const addPayment = useApp((s) => s.addWorkerPayment);
 
-  const [tab, setTab] = useState<'info' | 'advances' | 'absences' | 'payment'>('info');
-  const calc = workerPayCalc(worker);
+  const data = useAppData();
+  const [tab, setTab] = useState<'info' | 'advances' | 'absences' | 'payment' | 'history'>('info');
+  // The pay slip only ever counts what has NOT been settled yet: pending
+  // agency-fee commissions, pending absences and pending advances.
+  const calc = useMemo(() => workerPayCalc(worker, data.reservations), [worker, data.reservations]);
+  const allCommissions = useMemo(
+    () => workerCommissions(worker.id, data.reservations),
+    [worker.id, data.reservations],
+  );
+  const paidCommissions = useMemo(() => allCommissions.filter((c) => c.settled), [allCommissions]);
+  const pendingAdvances = useMemo(() => worker.advances.filter((a) => !a.deducted), [worker.advances]);
+  const pendingAbsences = useMemo(() => worker.absences.filter((a) => !a.deducted), [worker.absences]);
   const [netEdit, setNetEdit] = useState('');
   const [payDate, setPayDate] = useState(todayISO());
   const [payDesc, setPayDesc] = useState('');
@@ -414,7 +426,7 @@ function WorkerProfile({ worker, onClose }: { worker: Worker; onClose: () => voi
   return (
     <Modal open onClose={onClose} title={worker.name} subtitle={worker.role} size="lg">
       <div className="space-y-5">
-        <Tabs<'info' | 'advances' | 'absences' | 'payment'>
+        <Tabs<'info' | 'advances' | 'absences' | 'payment' | 'history'>
           value={tab}
           onChange={setTab}
           tabs={[
@@ -422,6 +434,7 @@ function WorkerProfile({ worker, onClose }: { worker: Worker; onClose: () => voi
             { value: 'advances', label: t('workers.advances'), icon: <Coins size={15} /> },
             { value: 'absences', label: t('workers.absences'), icon: <CalendarX size={15} /> },
             { value: 'payment', label: t('workers.payment'), icon: <Wallet size={15} /> },
+            { value: 'history', label: t('workers.history'), icon: <History size={15} /> },
           ]}
         />
 
@@ -451,7 +464,8 @@ function WorkerProfile({ worker, onClose }: { worker: Worker; onClose: () => voi
                     setAdvAmount(''); setAdvDesc(''); toast.success(t('toast.created'));
                   }}>{t('common.add')}</GradientButton>
                 </div>
-                <ListBlock items={worker.advances.map((a) => ({ id: a.id, left: a.description || t('workers.advances'), date: a.date, amount: a.amount, deducted: a.deducted }))} lang={lang} empty={t('common.noData')} deductedLabel={t('common.paid')} />
+                <ListBlock items={pendingAdvances.map((a) => ({ id: a.id, left: a.description || t('workers.advances'), date: a.date, amount: a.amount }))} lang={lang} empty={t('workers.noPending')} />
+                <p className="text-[11px] text-ink-muted">{t('workers.historyHint')}</p>
               </div>
             )}
 
@@ -466,14 +480,53 @@ function WorkerProfile({ worker, onClose }: { worker: Worker; onClose: () => voi
                     setAbsCost(''); setAbsDesc(''); toast.success(t('toast.created'));
                   }}>{t('common.add')}</GradientButton>
                 </div>
-                <ListBlock items={worker.absences.map((a) => ({ id: a.id, left: a.description || t('workers.absences'), date: a.date, amount: a.cost, negative: true }))} lang={lang} empty={t('common.noData')} />
+                <ListBlock items={pendingAbsences.map((a) => ({ id: a.id, left: a.description || t('workers.absences'), date: a.date, amount: a.cost, negative: true }))} lang={lang} empty={t('workers.noPending')} />
+                <p className="text-[11px] text-ink-muted">{t('workers.historyHint')}</p>
               </div>
             )}
 
             {tab === 'payment' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* Pending agency-fee commissions: each one shows its location */}
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-amber-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <Briefcase size={14} /> {t('workers.commissions')}
+                    </p>
+                    <span className="text-sm font-extrabold text-amber-700">{formatDA(calc.commissionsTotal)}</span>
+                  </div>
+                  {calc.commissions.length === 0 ? (
+                    <p className="text-sm text-ink-muted text-center py-3">{t('fee.noCommissions')}</p>
+                  ) : (
+                    <div className="space-y-2 max-h-56 overflow-y-auto">
+                      {calc.commissions.map((c) => (
+                        <div key={c.reservationId} className="rounded-xl border border-amber-200 bg-white px-4 py-2.5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-ink-primary flex items-center gap-1.5">
+                                <Building2 size={13} className="text-amber-500 shrink-0" />
+                                {t('fee.locationRef')} {c.code}
+                              </p>
+                              <p className="text-xs text-ink-secondary mt-0.5 truncate">{clientName(data, c.clientId)}</p>
+                              <p className="text-[11px] text-ink-muted mt-0.5">
+                                {formatDate(c.checkIn, lang)} → {formatDate(c.checkOut, lang)}
+                              </p>
+                              <p className="text-[11px] text-amber-700 mt-0.5 font-medium">
+                                {t('fee.title')} {formatDA(c.agencyFee)} · {c.percent}%
+                              </p>
+                            </div>
+                            <span className="text-sm font-extrabold text-amber-700 shrink-0">+{formatDA(c.amount)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Pay slip */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <Stat label={t('workers.grossSalary')} value={formatDA(calc.gross)} />
+                  <Stat label={t('workers.commissions')} value={`+${formatDA(calc.commissionsTotal)}`} tone="success" />
                   <Stat label={t('workers.deductAbsences')} value={`−${formatDA(calc.absencesDeduction)}`} tone="danger" />
                   <Stat label={t('workers.deductAdvances')} value={`−${formatDA(calc.advancesDeduction)}`} tone="danger" />
                   <Stat label={t('workers.netPay')} value={formatDA(calc.net)} tone="success" />
@@ -485,25 +538,122 @@ function WorkerProfile({ worker, onClose }: { worker: Worker; onClose: () => voi
                     <TextField label={t('common.date')} type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
                     <TextField label={t('common.description')} value={payDesc} onChange={(e) => setPayDesc(e.target.value)} />
                   </div>
+                  <p className="text-[11px] text-ink-muted">{t('workers.historyHint')}</p>
                   <GradientButton variant="success" fullWidth icon={<Wallet size={16} />} onClick={async () => {
                     if (net <= 0) return toast.error(t('login.required'));
-                    await addPayment(worker.id, { date: payDate, amount: net, description: payDesc || t('workers.payment') });
+                    await addPayment(
+                      worker.id,
+                      {
+                        date: payDate,
+                        amount: net,
+                        description: payDesc || t('workers.payment'),
+                        gross: calc.gross,
+                        commissionsTotal: calc.commissionsTotal,
+                        absencesTotal: calc.absencesDeduction,
+                        advancesTotal: calc.advancesDeduction,
+                      },
+                      { reservationIds: calc.commissions.map((c) => c.reservationId) },
+                    );
                     toast.success(t('toast.paid')); setNetEdit(''); setPayDesc('');
                   }}>{t('workers.savePayment')}</GradientButton>
                 </div>
-
-                {worker.payments.length > 0 && (
-                  <div>
-                    <p className="text-xs font-bold text-ink-muted uppercase mb-2">{t('common.history')}</p>
-                    <ListBlock items={worker.payments.map((p) => ({ id: p.id, left: p.description || t('workers.payment'), date: p.date, amount: p.amount, positive: true }))} lang={lang} empty={t('common.noData')} />
-                  </div>
-                )}
               </div>
             )}
+
+            {tab === 'history' && (
+              <div className="space-y-5">
+                <div>
+                  <p className="text-xs font-bold text-ink-muted uppercase mb-2">{t('workers.history')}</p>
+                  {worker.payments.length === 0 ? (
+                    <p className="text-sm text-ink-muted text-center py-4">{t('common.noData')}</p>
+                  ) : (
+                    <div className="space-y-2 max-h-72 overflow-y-auto">
+                      {[...worker.payments].sort((a, b) => b.date.localeCompare(a.date)).map((p) => (
+                        <div key={p.id} className="rounded-xl bg-slate-100/70 border border-slate-200 px-4 py-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-ink-primary truncate">{p.description || t('workers.payment')}</p>
+                              <p className="text-xs text-ink-muted">{formatDate(p.date, lang)}</p>
+                            </div>
+                            <span className="text-sm font-extrabold text-emerald-600 shrink-0">+{formatDA(p.amount)}</span>
+                          </div>
+                          {(p.gross != null || p.commissionsTotal != null) && (
+                            <div className="mt-2 pt-2 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                              <span className="text-ink-muted">{t('workers.grossSalary')}: <b className="text-ink-primary">{formatDA(p.gross ?? 0)}</b></span>
+                              <span className="text-ink-muted">{t('workers.commissions')}: <b className="text-emerald-600">+{formatDA(p.commissionsTotal ?? 0)}</b></span>
+                              <span className="text-ink-muted">{t('workers.absences')}: <b className="text-rose-600">−{formatDA(p.absencesTotal ?? 0)}</b></span>
+                              <span className="text-ink-muted">{t('workers.advances')}: <b className="text-rose-600">−{formatDA(p.advancesTotal ?? 0)}</b></span>
+                            </div>
+                          )}
+                          {/* Items settled by this payment */}
+                          <SettledItems
+                            paymentId={p.id}
+                            worker={worker}
+                            commissions={paidCommissions}
+                            data={data}
+                            lang={lang}
+                            t={t}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
           </motion.div>
         </AnimatePresence>
       </div>
     </Modal>
+  );
+}
+
+/** The advances / absences / commissions a given payment absorbed. */
+function SettledItems({
+  paymentId, worker, commissions, data, lang, t,
+}: {
+  paymentId: string;
+  worker: Worker;
+  commissions: ReturnType<typeof workerCommissions>;
+  data: ReturnType<typeof useAppData>;
+  lang: 'fr' | 'ar';
+  t: (k: string, v?: Record<string, string | number>) => string;
+}) {
+  const advances = worker.advances.filter((a) => a.workerPaymentId === paymentId);
+  const absences = worker.absences.filter((a) => a.workerPaymentId === paymentId);
+  const comms = commissions.filter((c) => c.paymentId === paymentId);
+  if (advances.length === 0 && absences.length === 0 && comms.length === 0) return null;
+  return (
+    <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">
+      {comms.map((c) => (
+        <p key={c.reservationId} className="text-[11px] text-ink-secondary flex items-center justify-between gap-2">
+          <span className="truncate">
+            <Briefcase size={10} className="inline text-amber-500 me-1" />
+            {t('fee.locationRef')} {c.code} · {clientName(data, c.clientId)} · {c.percent}%
+          </span>
+          <span className="font-semibold text-emerald-600 shrink-0">+{formatDA(c.amount)}</span>
+        </p>
+      ))}
+      {absences.map((a) => (
+        <p key={a.id} className="text-[11px] text-ink-secondary flex items-center justify-between gap-2">
+          <span className="truncate">
+            <CalendarX size={10} className="inline text-rose-500 me-1" />
+            {a.description || t('workers.absences')} · {formatDate(a.date, lang)}
+          </span>
+          <span className="font-semibold text-rose-600 shrink-0">−{formatDA(a.cost)}</span>
+        </p>
+      ))}
+      {advances.map((a) => (
+        <p key={a.id} className="text-[11px] text-ink-secondary flex items-center justify-between gap-2">
+          <span className="truncate">
+            <Coins size={10} className="inline text-amber-500 me-1" />
+            {a.description || t('workers.advances')} · {formatDate(a.date, lang)}
+          </span>
+          <span className="font-semibold text-rose-600 shrink-0">−{formatDA(a.amount)}</span>
+        </p>
+      ))}
+    </div>
   );
 }
 

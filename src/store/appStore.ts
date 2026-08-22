@@ -87,6 +87,9 @@ function dbToRoom(row: Record<string, unknown>): Room {
     mediatorId: (row.mediator_id as string) || undefined,
     salePrice: row.sale_price != null ? (row.sale_price as number) : undefined,
     purchasePrice: row.purchase_price != null ? (row.purchase_price as number) : undefined,
+    photos: (row.photo_urls as string[]) || [],
+    deleted: row.deleted === true,
+    deletedAt: (row.deleted_at as string) || undefined,
   };
 }
 
@@ -204,6 +207,13 @@ function dbToReservation(row: Record<string, unknown>): Reservation {
     status: row.status as Reservation['status'],
     createdAt: ((row.created_at as string) || '').slice(0, 10),
     notes: (row.notes as string) || undefined,
+    agencyFee: (row.agency_fee as number) || 0,
+    agencyFeeCommissionEnabled: row.agency_fee_worker_id != null,
+    agencyFeeWorkerId: (row.agency_fee_worker_id as string) || undefined,
+    agencyFeePercent: row.agency_fee_percent != null ? (row.agency_fee_percent as number) : undefined,
+    agencyFeeCommission: (row.agency_fee_commission as number) || 0,
+    agencyFeeCommissionSettled: row.agency_fee_commission_settled === true,
+    agencyFeeCommissionPaymentId: (row.agency_fee_commission_payment_id as string) || undefined,
   };
   return r;
 }
@@ -216,6 +226,7 @@ function dbToWorker(row: Record<string, unknown>): Worker {
       description: (a.description as string) || undefined,
       amount: a.amount as number,
       deducted: a.deducted as boolean,
+      workerPaymentId: (a.worker_payment_id as string) || undefined,
     }),
   );
   const absences: Absence[] = ((row.worker_absences as Record<string, unknown>[]) || []).map(
@@ -224,6 +235,8 @@ function dbToWorker(row: Record<string, unknown>): Worker {
       date: a.date as string,
       description: (a.description as string) || undefined,
       cost: a.cost as number,
+      deducted: a.deducted === true,
+      workerPaymentId: (a.worker_payment_id as string) || undefined,
     }),
   );
   const payments: WorkerPayment[] = ((row.worker_payments as Record<string, unknown>[]) || []).map(
@@ -232,6 +245,10 @@ function dbToWorker(row: Record<string, unknown>): Worker {
       date: p.date as string,
       amount: p.amount as number,
       description: (p.description as string) || undefined,
+      gross: p.gross != null ? (p.gross as number) : undefined,
+      commissionsTotal: p.commissions_total != null ? (p.commissions_total as number) : undefined,
+      absencesTotal: p.absences_total != null ? (p.absences_total as number) : undefined,
+      advancesTotal: p.advances_total != null ? (p.advances_total as number) : undefined,
     }),
   );
   const profile = row.profiles as Record<string, unknown> | null;
@@ -416,6 +433,8 @@ interface AppState extends AppData, AuthState {
   addRoom: (r: Omit<Room, 'id' | 'status'>) => Promise<Room | null>;
   updateRoom: (id: string, patch: Partial<Room>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
+  restoreRoom: (id: string) => Promise<void>;
+  purgeRoom: (id: string) => Promise<void>;
   setRoomMaintenance: (id: string, note?: string) => Promise<void>;
   endRoomMaintenance: (id: string) => Promise<void>;
   addFloor: (name: string) => Promise<void>;
@@ -440,7 +459,11 @@ interface AppState extends AppData, AuthState {
   deleteWorker: (id: string) => Promise<void>;
   addWorkerAdvance: (workerId: string, a: Omit<Advance, 'id' | 'deducted'>) => Promise<void>;
   addWorkerAbsence: (workerId: string, a: Omit<Absence, 'id'>) => Promise<void>;
-  addWorkerPayment: (workerId: string, p: Omit<WorkerPayment, 'id'>) => Promise<void>;
+  addWorkerPayment: (
+    workerId: string,
+    p: Omit<WorkerPayment, 'id'>,
+    settle?: { reservationIds?: string[] },
+  ) => Promise<void>;
   setWorkerPermissions: (workerId: string, perms: Permissions) => Promise<void>;
   addRole: (name: string) => Promise<void>;
 
@@ -814,6 +837,7 @@ export const useApp = create<AppState>()((set, get) => ({
         mediator_id: r.mediatorId || null,
         sale_price: r.salePrice ?? null,
         purchase_price: r.purchasePrice ?? null,
+        photo_urls: r.photos ?? [],
       })
       .select()
       .single();
@@ -851,12 +875,51 @@ export const useApp = create<AppState>()((set, get) => ({
     if (patch.mediatorId !== undefined) dbPatch.mediator_id = patch.mediatorId || null;
     if (patch.salePrice !== undefined) dbPatch.sale_price = patch.salePrice ?? null;
     if (patch.purchasePrice !== undefined) dbPatch.purchase_price = patch.purchasePrice ?? null;
+    if (patch.photos !== undefined) dbPatch.photo_urls = patch.photos ?? [];
+    if (patch.deleted !== undefined) dbPatch.deleted = patch.deleted;
+    if (patch.deletedAt !== undefined) dbPatch.deleted_at = patch.deletedAt || null;
     await supabase.from('rooms').update(dbPatch).eq('id', id);
     set((s) => ({ rooms: s.rooms.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
   },
 
+  // Soft delete: the apartment is kept in the database as a draft (corbeille)
+  // so it can be restored, and so reservations/sales still resolve its name.
   deleteRoom: async (id) => {
-    await supabase.from('rooms').delete().eq('id', id);
+    const deletedAt = new Date().toISOString();
+    const { error } = await supabase
+      .from('rooms')
+      .update({ deleted: true, deleted_at: deletedAt })
+      .eq('id', id);
+    if (error) {
+      console.error('deleteRoom (soft) failed:', error);
+      return;
+    }
+    set((s) => ({
+      rooms: s.rooms.map((r) => (r.id === id ? { ...r, deleted: true, deletedAt } : r)),
+    }));
+  },
+
+  restoreRoom: async (id) => {
+    const { error } = await supabase
+      .from('rooms')
+      .update({ deleted: false, deleted_at: null })
+      .eq('id', id);
+    if (error) {
+      console.error('restoreRoom failed:', error);
+      return;
+    }
+    set((s) => ({
+      rooms: s.rooms.map((r) => (r.id === id ? { ...r, deleted: false, deletedAt: undefined } : r)),
+    }));
+  },
+
+  // Definitive removal — only reachable from the corbeille.
+  purgeRoom: async (id) => {
+    const { error } = await supabase.from('rooms').delete().eq('id', id);
+    if (error) {
+      console.error('purgeRoom failed:', error);
+      throw error;
+    }
     set((s) => ({ rooms: s.rooms.filter((r) => r.id !== id) }));
   },
 
@@ -969,6 +1032,11 @@ export const useApp = create<AppState>()((set, get) => ({
         status,
         notes: r.notes || null,
         created_at: today,
+        agency_fee: r.agencyFee ?? 0,
+        agency_fee_worker_id: r.agencyFeeCommissionEnabled ? r.agencyFeeWorkerId || null : null,
+        agency_fee_percent: r.agencyFeeCommissionEnabled ? r.agencyFeePercent ?? null : null,
+        agency_fee_commission: r.agencyFeeCommissionEnabled ? r.agencyFeeCommission ?? 0 : 0,
+        agency_fee_commission_settled: false,
       })
       .select()
       .single();
@@ -1036,6 +1104,12 @@ export const useApp = create<AppState>()((set, get) => ({
       status,
       createdAt: today,
       notes: r.notes || undefined,
+      agencyFee: r.agencyFee ?? 0,
+      agencyFeeCommissionEnabled: !!r.agencyFeeCommissionEnabled && !!r.agencyFeeWorkerId,
+      agencyFeeWorkerId: r.agencyFeeCommissionEnabled ? r.agencyFeeWorkerId : undefined,
+      agencyFeePercent: r.agencyFeeCommissionEnabled ? r.agencyFeePercent : undefined,
+      agencyFeeCommission: r.agencyFeeCommissionEnabled ? r.agencyFeeCommission ?? 0 : 0,
+      agencyFeeCommissionSettled: false,
     };
 
     set((s) => ({ reservations: [newRes, ...s.reservations] }));
@@ -1053,6 +1127,14 @@ export const useApp = create<AppState>()((set, get) => ({
     if (patch.nights !== undefined) dbPatch.nights = patch.nights;
     if (patch.total !== undefined) dbPatch.total = patch.total;
     if (patch.notes !== undefined) dbPatch.notes = patch.notes || null;
+    if (patch.agencyFee !== undefined) dbPatch.agency_fee = patch.agencyFee ?? 0;
+    if (patch.agencyFeeCommissionEnabled !== undefined || patch.agencyFeeWorkerId !== undefined) {
+      const enabled = patch.agencyFeeCommissionEnabled ?? current?.agencyFeeCommissionEnabled ?? false;
+      const workerId = patch.agencyFeeWorkerId ?? current?.agencyFeeWorkerId;
+      dbPatch.agency_fee_worker_id = enabled && workerId ? workerId : null;
+    }
+    if (patch.agencyFeePercent !== undefined) dbPatch.agency_fee_percent = patch.agencyFeePercent ?? null;
+    if (patch.agencyFeeCommission !== undefined) dbPatch.agency_fee_commission = patch.agencyFeeCommission ?? 0;
 
     // Resolve the status that must be persisted: an explicit transition wins;
     // otherwise reconcile paid/debt from the (possibly updated) payments/total.
@@ -1381,31 +1463,63 @@ export const useApp = create<AppState>()((set, get) => ({
     }));
   },
 
-  addWorkerPayment: async (workerId, p) => {
-    const { data } = await supabase
+  // A payment closes the current pay period: every pending advance, absence and
+  // agency-fee commission it absorbed is stamped with the payment id, so it
+  // never shows up in the NEXT payment and appears in the payment history.
+  addWorkerPayment: async (workerId, p, settle) => {
+    const { data, error } = await supabase
       .from('worker_payments')
       .insert({
         worker_id: workerId,
         date: p.date,
         amount: p.amount,
         description: p.description || null,
+        gross: p.gross ?? null,
+        commissions_total: p.commissionsTotal ?? null,
+        absences_total: p.absencesTotal ?? null,
+        advances_total: p.advancesTotal ?? null,
       })
       .select()
       .single();
-    if (!data) return;
+    if (error || !data) {
+      console.error('addWorkerPayment failed:', error);
+      return;
+    }
+    const paymentId = (data as Record<string, unknown>).id as string;
 
-    // Mark all pending advances as deducted
+    // Mark all pending advances / absences as deducted by this payment.
     await supabase
       .from('worker_advances')
-      .update({ deducted: true })
+      .update({ deducted: true, worker_payment_id: paymentId })
+      .eq('worker_id', workerId)
+      .eq('deducted', false);
+    await supabase
+      .from('worker_absences')
+      .update({ deducted: true, worker_payment_id: paymentId })
       .eq('worker_id', workerId)
       .eq('deducted', false);
 
+    // Settle the agency-fee commissions that were part of this payment.
+    const settledResIds = settle?.reservationIds ?? [];
+    if (settledResIds.length > 0) {
+      await supabase
+        .from('reservations')
+        .update({
+          agency_fee_commission_settled: true,
+          agency_fee_commission_payment_id: paymentId,
+        })
+        .in('id', settledResIds);
+    }
+
     const payment: WorkerPayment = {
-      id: (data as Record<string, unknown>).id as string,
+      id: paymentId,
       date: p.date,
       amount: p.amount,
       description: p.description,
+      gross: p.gross,
+      commissionsTotal: p.commissionsTotal,
+      absencesTotal: p.absencesTotal,
+      advancesTotal: p.advancesTotal,
     };
     set((s) => ({
       workers: s.workers.map((w) =>
@@ -1413,9 +1527,19 @@ export const useApp = create<AppState>()((set, get) => ({
           ? {
               ...w,
               payments: [...w.payments, payment],
-              advances: w.advances.map((adv) => ({ ...adv, deducted: true })),
+              advances: w.advances.map((adv) =>
+                adv.deducted ? adv : { ...adv, deducted: true, workerPaymentId: paymentId },
+              ),
+              absences: w.absences.map((abs) =>
+                abs.deducted ? abs : { ...abs, deducted: true, workerPaymentId: paymentId },
+              ),
             }
           : w,
+      ),
+      reservations: s.reservations.map((r) =>
+        settledResIds.includes(r.id)
+          ? { ...r, agencyFeeCommissionSettled: true, agencyFeeCommissionPaymentId: paymentId }
+          : r,
       ),
     }));
   },

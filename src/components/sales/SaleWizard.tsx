@@ -114,20 +114,22 @@ export function SaleWizard({
   ], [t]);
   const currentKey = steps[step]?.key;
 
+  // Soft-deleted apartments are never sellable.
+  const liveRooms = useMemo(() => data.rooms.filter((r) => !r.deleted), [data.rooms]);
   const saleRooms = useMemo(
-    () => data.rooms.filter((r) => r.propertyType !== 'rental'),
-    [data.rooms],
+    () => liveRooms.filter((r) => r.propertyType !== 'rental'),
+    [liveRooms],
   );
   const filteredApts = useMemo(() => {
     const q = aptSearch.trim().toLowerCase();
-    const pool = saleRooms.length > 0 ? saleRooms : data.rooms;
+    const pool = saleRooms.length > 0 ? saleRooms : liveRooms;
     return (q
       ? pool.filter((r) =>
           r.name.toLowerCase().includes(q) ||
           (r.commune ?? '').toLowerCase().includes(q))
       : pool
     ).slice(0, 12);
-  }, [aptSearch, saleRooms, data.rooms]);
+  }, [aptSearch, saleRooms, liveRooms]);
 
   const filteredClients = useMemo(() => {
     const q = clientSearch.trim().toLowerCase();

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   BedDouble, Plus, Pencil, Trash2, Wrench, Eye, Layers, Tag, Users, Check, X,
   MapPin, Home, Tags, Handshake, Sofa, CalendarDays, CalendarRange,
+  ImagePlus, Loader2, RotateCcw, Archive, ImageIcon, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -19,7 +20,8 @@ import { MediatorPicker } from '@/components/forms/MediatorPicker';
 import { effectiveRoomStatus, reservationPaid } from '@/store/selectors';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, todayISO, addDaysISO, cn } from '@/lib/utils';
-import { categoryName, floorName, clientName, mediatorName, rentalPeriodOf, rentalUnits } from '@/lib/lookups';
+import { categoryName, floorName, clientName, mediatorName, rentalPeriodOf, rentalUnits, activeRooms, deletedRooms } from '@/lib/lookups';
+import { uploadApartmentPhoto, deleteApartmentPhoto, formatBytes } from '@/lib/storage';
 import type { Room, RoomStatus, PropertyType, RentalPeriod } from '@/types';
 
 type StatusFilter = 'all' | RoomStatus | 'rental' | 'sale';
@@ -36,6 +38,8 @@ export default function Chambres() {
   const addRoom = useApp((s) => s.addRoom);
   const updateRoom = useApp((s) => s.updateRoom);
   const deleteRoom = useApp((s) => s.deleteRoom);
+  const restoreRoom = useApp((s) => s.restoreRoom);
+  const purgeRoom = useApp((s) => s.purgeRoom);
   const setRoomMaintenance = useApp((s) => s.setRoomMaintenance);
   const endRoomMaintenance = useApp((s) => s.endRoomMaintenance);
   const addFloor = useApp((s) => s.addFloor);
@@ -54,10 +58,15 @@ export default function Chambres() {
   const [toDelete, setToDelete] = useState<Room | null>(null);
   const [maintRoom, setMaintRoom] = useState<Room | null>(null);
   const [detailRoom, setDetailRoom] = useState<Room | null>(null);
+  const [trashOpen, setTrashOpen] = useState(false);
+
+  // Soft-deleted apartments live in the corbeille, never in the main grid.
+  const liveRooms = useMemo(() => activeRooms(rooms), [rooms]);
+  const trashedRooms = useMemo(() => deletedRooms(rooms), [rooms]);
 
   const withStatus = useMemo(
-    () => rooms.map((r) => ({ room: r, status: effectiveRoomStatus(r, data.reservations, today) })),
-    [rooms, data.reservations, today],
+    () => liveRooms.map((r) => ({ room: r, status: effectiveRoomStatus(r, data.reservations, today) })),
+    [liveRooms, data.reservations, today],
   );
   const filtered = useMemo(() => {
     let list = withStatus;
@@ -92,6 +101,9 @@ export default function Chambres() {
               </GradientButton>
               <GradientButton variant="glass" icon={<Tag size={17} />} onClick={() => setManageCats(true)}>
                 {t('rooms.manageCategories')}
+              </GradientButton>
+              <GradientButton variant="glass" icon={<Archive size={17} />} onClick={() => setTrashOpen(true)}>
+                {t('rooms.trash')}{trashedRooms.length > 0 ? ` (${trashedRooms.length})` : ''}
               </GradientButton>
               <GradientButton icon={<Plus size={18} />} onClick={() => { setFormRoom(null); setFormOpen(true); }}>
                 {t('rooms.new')}
@@ -180,6 +192,25 @@ export default function Chambres() {
                     {(room.propertyType ?? 'rental') === 'rental' && <RentalPeriodBadge period={rentalPeriodOf(room)} />}
                     <FurnishedBadge furnished={!!room.furnished} />
                   </div>
+
+                  {(room.photos?.length ?? 0) > 0 && (
+                    <div className="mt-3 flex gap-1.5 overflow-hidden">
+                      {room.photos!.slice(0, 3).map((url, i) => (
+                        <img
+                          key={url + i}
+                          src={url}
+                          alt=""
+                          loading="lazy"
+                          className="h-14 w-20 rounded-lg object-cover border border-white/15 shrink-0"
+                        />
+                      ))}
+                      {room.photos!.length > 3 && (
+                        <span className="grid h-14 w-14 shrink-0 place-items-center rounded-lg border border-white/15 bg-white/10 text-xs font-bold text-white">
+                          +{room.photos!.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {room.commune && (
                     <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-secondary">
@@ -299,13 +330,97 @@ export default function Chambres() {
 
       <RoomDetailsModal room={detailRoom} onClose={() => setDetailRoom(null)} data={data} lang={lang} />
 
+      <TrashModal
+        open={trashOpen}
+        onClose={() => setTrashOpen(false)}
+        rooms={trashedRooms}
+        lang={lang}
+        onRestore={async (id) => { await restoreRoom(id); toast.success(t('rooms.restored')); }}
+        onPurge={async (id) => {
+          try {
+            await purgeRoom(id);
+            toast.success(t('toast.deleted'));
+          } catch {
+            toast.error(t('rooms.purgeBlocked'));
+          }
+        }}
+      />
+
       <ConfirmDialog
         open={!!toDelete}
         onClose={() => setToDelete(null)}
-        onConfirm={async () => { if (toDelete) { await deleteRoom(toDelete.id); toast.success(t('toast.deleted')); } }}
-        message={toDelete ? `${t('common.deleteMsg')} (${t('nav.chambres')} ${toDelete.name})` : ''}
+        onConfirm={async () => { if (toDelete) { await deleteRoom(toDelete.id); toast.success(t('rooms.softDeleted')); } }}
+        message={toDelete ? `${t('rooms.softDeleteMsg')} (${t('nav.chambres')} ${toDelete.name})` : ''}
       />
     </div>
+  );
+}
+
+// ---------------- CORBEILLE (soft-deleted apartments) ----------------
+function TrashModal({
+  open, onClose, rooms, lang, onRestore, onPurge,
+}: {
+  open: boolean;
+  onClose: () => void;
+  rooms: Room[];
+  lang: 'fr' | 'ar';
+  onRestore: (id: string) => Promise<void>;
+  onPurge: (id: string) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [confirmPurge, setConfirmPurge] = useState<Room | null>(null);
+
+  return (
+    <>
+      <Modal open={open} onClose={onClose} title={t('rooms.trashTitle')} subtitle={t('rooms.trashHint')} size="lg">
+        {rooms.length === 0 ? (
+          <div className="py-10 text-center">
+            <Archive size={34} className="mx-auto mb-2 text-slate-300" />
+            <p className="text-sm text-ink-muted">{t('rooms.emptyTrash')}</p>
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-[420px] overflow-y-auto">
+            {rooms.map((r) => (
+              <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  {r.photos?.[0] ? (
+                    <img src={r.photos[0]} alt="" className="h-12 w-16 rounded-lg object-cover border border-slate-200 shrink-0" />
+                  ) : (
+                    <span className="grid h-12 w-16 shrink-0 place-items-center rounded-lg bg-slate-200 text-slate-400">
+                      <BedDouble size={18} />
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-ink-primary truncate">{r.name}</p>
+                    <p className="text-xs text-ink-muted truncate">
+                      {[r.commune, (r.propertyType ?? 'rental') === 'sale' ? t('apt.typeSale') : t('apt.typeRental')].filter(Boolean).join(' · ')}
+                    </p>
+                    {r.deletedAt && (
+                      <p className="text-[11px] text-ink-muted">{t('rooms.deletedOn')} {formatDate(r.deletedAt.slice(0, 10), lang)}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <GradientButton size="sm" variant="glass" icon={<RotateCcw size={14} />} onClick={() => onRestore(r.id)}>
+                    {t('rooms.restore')}
+                  </GradientButton>
+                  <button onClick={() => setConfirmPurge(r)} className="btn-card-action btn-action-delete" title={t('rooms.deleteForever')}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={!!confirmPurge}
+        onClose={() => setConfirmPurge(null)}
+        onConfirm={async () => { if (confirmPurge) await onPurge(confirmPurge.id); setConfirmPurge(null); }}
+        message={confirmPurge ? `${t('rooms.deleteForeverMsg')} (${confirmPurge.name})` : ''}
+      />
+    </>
   );
 }
 
@@ -392,10 +507,44 @@ function RoomFormModal({
   const [ownerName, setOwnerName] = useState(room?.ownerName ?? '');
   const [ownerPhone, setOwnerPhone] = useState(room?.ownerPhone ?? '');
   const [mediatorId, setMediatorId] = useState(room?.mediatorId ?? '');
+  const [photos, setPhotos] = useState<string[]>(room?.photos ?? []);
+  const [uploading, setUploading] = useState(false);
+  const [lastSaving, setLastSaving] = useState<string | null>(null);
   const [newFloor, setNewFloor] = useState('');
   const [newCat, setNewCat] = useState('');
   const [showFloorInput, setShowFloorInput] = useState(false);
   const [showCatInput, setShowCatInput] = useState(false);
+
+  /**
+   * Optimises then uploads every picked file. A 10 MB shot is squeezed down to
+   * roughly 100 KB before it ever reaches the bucket, so the gallery stays fast.
+   */
+  const handlePhotos = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    let saved: string | null = null;
+    try {
+      for (const file of Array.from(files)) {
+        const res = await uploadApartmentPhoto(file, room?.id ?? 'new');
+        setPhotos((prev) => [...prev, res.url]);
+        saved = t('apt.photoOptimized', {
+          from: formatBytes(res.originalBytes),
+          to: formatBytes(res.optimizedBytes),
+        });
+      }
+      setLastSaving(saved);
+    } catch (e) {
+      console.error('apartment photo upload failed:', e);
+      toast.error(t('apt.photoError'));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removePhoto = async (url: string) => {
+    setPhotos((prev) => prev.filter((u) => u !== url));
+    try { await deleteApartmentPhoto(url); } catch { /* already gone */ }
+  };
 
   const save = () => {
     if (!name.trim()) return toast.error(t('login.required'));
@@ -419,6 +568,9 @@ function RoomFormModal({
       ownerPhone: ownerPhone.trim() || undefined,
       mediatorId: mediatorId || undefined,
       salePrice: salePrice ? Number(salePrice) : undefined,
+      photos,
+      deleted: room?.deleted ?? false,
+      deletedAt: room?.deletedAt,
     });
   };
 
@@ -584,6 +736,52 @@ function RoomFormModal({
           )}
         </div>
 
+        {/* Photos — stored in the apartment-photos bucket, compressed to ~100 KB */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-semibold text-ink-secondary mb-1 flex items-center gap-1.5">
+            <ImageIcon size={14} className="text-brand-400" /> {t('apt.photos')}
+          </p>
+          <p className="text-[11px] text-ink-muted mb-3">{t('apt.photosHint')}</p>
+
+          <div className="flex flex-wrap gap-2.5">
+            {photos.map((url) => (
+              <div key={url} className="relative group">
+                <img src={url} alt="" className="h-24 w-32 rounded-xl object-cover border-2 border-slate-200" />
+                <button
+                  type="button"
+                  onClick={() => removePhoto(url)}
+                  className="absolute -top-2 -end-2 grid h-6 w-6 place-items-center rounded-full bg-rose-500 text-white shadow hover:bg-rose-600"
+                  title={t('common.delete')}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+
+            <label className={cn(
+              'grid h-24 w-32 cursor-pointer place-items-center rounded-xl border-2 border-dashed text-center transition-all',
+              uploading ? 'border-brand-300 bg-brand-50 cursor-wait' : 'border-slate-300 bg-white hover:border-brand-400 hover:bg-brand-50',
+            )}>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                disabled={uploading}
+                onChange={(e) => { handlePhotos(e.target.files); e.target.value = ''; }}
+              />
+              <span className="flex flex-col items-center gap-1 text-[11px] font-semibold text-ink-secondary px-2">
+                {uploading ? <Loader2 size={18} className="animate-spin text-brand-500" /> : <ImagePlus size={18} className="text-brand-500" />}
+                {uploading ? t('apt.uploading') : t('apt.addPhotos')}
+              </span>
+            </label>
+          </div>
+
+          {lastSaving && !uploading && (
+            <p className="mt-2 text-[11px] font-semibold text-emerald-600">{lastSaving}</p>
+          )}
+        </div>
+
         {/* Owner (free text — optional) */}
         <div>
           <p className="text-xs font-semibold text-ink-secondary mb-1.5">{t('apt.owner')}</p>
@@ -713,6 +911,9 @@ function RoomDetailsModal({
     <Modal open={!!room} onClose={onClose} title={room ? `${t('nav.chambres')} ${room.name}` : ''} subtitle={room ? categoryName(data, room.categoryId) : ''} size="lg">
       {room && (
         <div className="space-y-5">
+          {/* Photo gallery */}
+          <PhotoGallery photos={room.photos ?? []} />
+
           {/* Full apartment information */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
@@ -816,5 +1017,108 @@ function RoomDetailsModal({
         </div>
       )}
     </Modal>
+  );
+}
+
+// ---------------- PHOTO GALLERY (apartment details) ----------------
+function PhotoGallery({ photos }: { photos: string[] }) {
+  const { t } = useI18n();
+  const [index, setIndex] = useState(0);
+  const [zoom, setZoom] = useState(false);
+
+  if (photos.length === 0) {
+    return (
+      <div className="grid h-40 place-items-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 text-ink-muted">
+        <div className="text-center">
+          <ImageIcon size={26} className="mx-auto mb-1.5 text-slate-300" />
+          <p className="text-sm">{t('apt.noPhotos')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const current = photos[Math.min(index, photos.length - 1)];
+  const go = (delta: number) => setIndex((i) => (i + delta + photos.length) % photos.length);
+
+  return (
+    <>
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex items-center justify-between mb-2.5">
+          <h4 className="text-sm font-bold text-ink-primary flex items-center gap-1.5">
+            <ImageIcon size={15} className="text-brand-500" /> {t('apt.photoGallery')}
+          </h4>
+          <span className="text-[11px] font-semibold text-ink-muted">{t('apt.photoCount', { n: photos.length })}</span>
+        </div>
+
+        {/* Main viewer */}
+        <div className="relative overflow-hidden rounded-xl bg-slate-900">
+          <img
+            src={current}
+            alt=""
+            className="mx-auto max-h-[320px] w-full cursor-zoom-in object-contain"
+            onClick={() => setZoom(true)}
+          />
+          {photos.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={() => go(-1)}
+                className="absolute start-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white hover:bg-black/70"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => go(1)}
+                className="absolute end-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white hover:bg-black/70"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Thumbnails */}
+        {photos.length > 1 && (
+          <div className="mt-2.5 flex gap-2 overflow-x-auto pb-1">
+            {photos.map((url, i) => (
+              <button
+                key={url + i}
+                type="button"
+                onClick={() => setIndex(i)}
+                className={cn(
+                  'h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 transition-all',
+                  i === index ? 'border-brand-500 ring-2 ring-brand-500/20' : 'border-slate-200 opacity-70 hover:opacity-100',
+                )}
+              >
+                <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Full-screen viewer */}
+      <AnimatePresence>
+        {zoom && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] grid place-items-center bg-black/90 p-6"
+            onClick={() => setZoom(false)}
+          >
+            <img src={current} alt="" className="max-h-full max-w-full object-contain" />
+            <button
+              type="button"
+              onClick={() => setZoom(false)}
+              className="absolute end-5 top-5 grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25"
+            >
+              <X size={20} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

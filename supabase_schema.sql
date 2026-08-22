@@ -101,6 +101,11 @@ CREATE TABLE IF NOT EXISTS public.rooms (
   mediator_id      uuid,
   sale_price       numeric,
   purchase_price   numeric,
+  -- Galerie photos : URLs publiques du bucket storage « apartment-photos ».
+  photo_urls       text[] NOT NULL DEFAULT '{}'::text[],
+  -- Corbeille : un appartement supprimé est conservé comme brouillon.
+  deleted          boolean NOT NULL DEFAULT false,
+  deleted_at       timestamptz,
   created_at       timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT rooms_pkey PRIMARY KEY (id),
   CONSTRAINT rooms_floor_id_fkey        FOREIGN KEY (floor_id)        REFERENCES public.floors(id)     ON DELETE SET NULL,
@@ -146,9 +151,19 @@ CREATE TABLE IF NOT EXISTS public.reservations (
   status         text NOT NULL DEFAULT 'pending'
                    CHECK (status = ANY (ARRAY['paid'::text, 'debt'::text, 'active'::text, 'pending'::text, 'cancelled'::text])),
   notes          text,
+  -- Frais d'agence facturés au client (compris dans `total`) et, en option,
+  -- la part de ces frais reversée à un employé.
+  agency_fee                       numeric NOT NULL DEFAULT 0,
+  agency_fee_worker_id             uuid,
+  agency_fee_percent               numeric,
+  agency_fee_commission            numeric NOT NULL DEFAULT 0,
+  agency_fee_commission_settled    boolean NOT NULL DEFAULT false,
+  agency_fee_commission_payment_id uuid,
   created_at     timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT reservations_pkey PRIMARY KEY (id),
   CONSTRAINT reservations_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE RESTRICT
+  -- NB: les FK vers workers / worker_payments sont ajoutées plus bas (tables
+  --     créées après reservations).
 );
 
 CREATE TABLE IF NOT EXISTS public.reservation_rooms (
@@ -248,10 +263,48 @@ CREATE TABLE IF NOT EXISTS public.worker_payments (
   date        date NOT NULL DEFAULT CURRENT_DATE,
   amount      numeric NOT NULL,
   description text,
+  -- Détail figé de la fiche de paie (affiché dans l'historique).
+  gross             numeric,
+  commissions_total numeric,
+  absences_total    numeric,
+  advances_total    numeric,
   created_at  timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT worker_payments_pkey PRIMARY KEY (id),
   CONSTRAINT worker_payments_worker_id_fkey FOREIGN KEY (worker_id) REFERENCES public.workers(id) ON DELETE CASCADE
 );
+
+-- Une fois `worker_payments` créée, on rattache les éléments réglés : acomptes,
+-- absences et commissions frais d'agence portent l'id de la paie qui les a
+-- absorbés — ils sortent de la paie suivante et rejoignent l'historique.
+ALTER TABLE public.worker_advances
+  ADD COLUMN IF NOT EXISTS worker_payment_id uuid;
+ALTER TABLE public.worker_absences
+  ADD COLUMN IF NOT EXISTS deducted          boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS worker_payment_id uuid;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'worker_advances_worker_payment_id_fkey') THEN
+    ALTER TABLE public.worker_advances
+      ADD CONSTRAINT worker_advances_worker_payment_id_fkey
+      FOREIGN KEY (worker_payment_id) REFERENCES public.worker_payments(id) ON DELETE SET NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'worker_absences_worker_payment_id_fkey') THEN
+    ALTER TABLE public.worker_absences
+      ADD CONSTRAINT worker_absences_worker_payment_id_fkey
+      FOREIGN KEY (worker_payment_id) REFERENCES public.worker_payments(id) ON DELETE SET NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'reservations_agency_fee_worker_id_fkey') THEN
+    ALTER TABLE public.reservations
+      ADD CONSTRAINT reservations_agency_fee_worker_id_fkey
+      FOREIGN KEY (agency_fee_worker_id) REFERENCES public.workers(id) ON DELETE SET NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'reservations_agency_fee_commission_payment_id_fkey') THEN
+    ALTER TABLE public.reservations
+      ADD CONSTRAINT reservations_agency_fee_commission_payment_id_fkey
+      FOREIGN KEY (agency_fee_commission_payment_id) REFERENCES public.worker_payments(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- ── Job roles (reference list of job titles) ────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.job_roles (
@@ -415,6 +468,11 @@ CREATE INDEX IF NOT EXISTS idx_sales_client_id                ON public.sales(cl
 CREATE INDEX IF NOT EXISTS idx_sale_payments_sale_id          ON public.sale_payments(sale_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_client_id            ON public.purchases(client_id);
 CREATE INDEX IF NOT EXISTS idx_purchase_payments_purchase_id  ON public.purchase_payments(purchase_id);
+CREATE INDEX IF NOT EXISTS idx_rooms_deleted                  ON public.rooms(deleted);
+CREATE INDEX IF NOT EXISTS idx_worker_advances_payment_id     ON public.worker_advances(worker_payment_id);
+CREATE INDEX IF NOT EXISTS idx_worker_absences_payment_id     ON public.worker_absences(worker_payment_id);
+CREATE INDEX IF NOT EXISTS idx_reservations_agency_fee_worker ON public.reservations(agency_fee_worker_id)
+  WHERE agency_fee_worker_id IS NOT NULL;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 --  2. AUTH → PROFILE TRIGGER
@@ -496,7 +554,43 @@ CREATE POLICY "public read profiles" ON public.profiles
   FOR SELECT TO anon USING (true);
 
 -- ═══════════════════════════════════════════════════════════════════════════
---  4. SEED — one residence-identity row (the app reads settings with .single())
+--  4. STORAGE — bucket public « apartment-photos » (galerie des appartements)
+--  Les images sont compressées à ~100 Ko par l'application avant l'envoi ;
+--  la limite de 5 Mo n'est qu'un garde-fou.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'apartment-photos',
+  'apartment-photos',
+  true,
+  5242880,
+  ARRAY['image/jpeg', 'image/png', 'image/webp']
+)
+ON CONFLICT (id) DO UPDATE
+  SET public             = true,
+      file_size_limit    = 5242880,
+      allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp'];
+
+DROP POLICY IF EXISTS "apartment photos public read" ON storage.objects;
+CREATE POLICY "apartment photos public read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'apartment-photos');
+
+DROP POLICY IF EXISTS "apartment photos insert" ON storage.objects;
+CREATE POLICY "apartment photos insert" ON storage.objects
+  FOR INSERT TO authenticated WITH CHECK (bucket_id = 'apartment-photos');
+
+DROP POLICY IF EXISTS "apartment photos update" ON storage.objects;
+CREATE POLICY "apartment photos update" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id = 'apartment-photos') WITH CHECK (bucket_id = 'apartment-photos');
+
+DROP POLICY IF EXISTS "apartment photos delete" ON storage.objects;
+CREATE POLICY "apartment photos delete" ON storage.objects
+  FOR DELETE TO authenticated USING (bucket_id = 'apartment-photos');
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  5. SEED — one residence-identity row (the app reads settings with .single())
 -- ═══════════════════════════════════════════════════════════════════════════
 
 INSERT INTO public.settings (name)
