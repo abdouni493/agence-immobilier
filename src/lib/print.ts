@@ -115,13 +115,18 @@ export const PRINT_STYLES = `
 
   /* ── Signatures & electronic stamp ── */
   .stamp { margin-top: 20px; display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid #e2e8f0; }
-  .cachet-circle { width: 128px; height: 128px; border-radius: 50%; border: 3px solid #0284c7; display: flex; align-items: center; justify-content: center; transform: rotate(-8deg); color: #0369a1; flex-shrink: 0; }
-  .cachet-circle .inner { width: 110px; height: 110px; border: 1.5px dashed #0284c7; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8px; overflow: hidden; }
-  .cachet-circle .cc-top { font-size: 7px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700; }
-  .cachet-circle .cc-name { font-size: 11px; font-weight: 900; text-transform: uppercase; line-height: 1.12; margin: 2px 0; word-break: break-word; max-width: 100%; }
-  .cachet-circle .cc-tel { font-size: 8px; font-weight: 800; letter-spacing: .2px; margin: 1px 0 2px; direction: ltr; }
-  .cachet-circle .cc-sub { font-size: 6.8px; text-transform: uppercase; letter-spacing: .8px; }
-  .cachet-circle .cc-line { width: 62%; border-top: 1px solid #7dd3fc; margin: 2px 0; }
+  /* Round rubber-stamp: a double ring with the agency name curved on top and
+     its phone number curved along the bottom (SVG textPath). */
+  .cachet-circle { width: 138px; height: 138px; transform: rotate(-7deg); flex-shrink: 0; }
+  .cachet-circle svg { width: 100%; height: 100%; display: block; }
+  .cachet-circle .cc-ring { fill: none; stroke: #0369a1; }
+  .cachet-circle .cc-ring-out { stroke-width: 4; }
+  .cachet-circle .cc-ring-in { stroke-width: 1.6; }
+  .cachet-circle .cc-arc { fill: #0369a1; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; }
+  .cachet-circle .cc-star { fill: #0369a1; font-size: 13px; }
+  .cachet-circle .cc-center { fill: #0369a1; font-weight: 900; letter-spacing: 1.2px; }
+  .cachet-circle .cc-center-sub { fill: #0284c7; font-size: 6.4px; letter-spacing: 1px; font-weight: 700; text-transform: uppercase; }
+  .cachet-circle .cc-divider { stroke: #7dd3fc; stroke-width: 1; }
   .foot { margin-top: 16px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
 
   /* ── Contract-specific ── */
@@ -174,8 +179,7 @@ export const PRINT_STYLES = `
   .doc.compact .clauses li { font-size: 9.5px; line-height: 1.4; margin-bottom: 2px; }
   .doc.compact .sign-grid { margin-top: 12px; gap: 14px; }
   .doc.compact .sign-box .line { margin-top: 26px; }
-  .doc.compact .cachet-circle { width: 112px; height: 112px; }
-  .doc.compact .cachet-circle .inner { width: 96px; height: 96px; }
+  .doc.compact .cachet-circle { width: 118px; height: 118px; }
   .doc.compact .foot { margin-top: 10px; padding-top: 6px; }
 
   /* Keep framed parts from being split across two pages. */
@@ -343,22 +347,38 @@ function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: 
 }
 
 /**
- * Round electronic stamp: the agency name and its phone number inside a double
- * circle. Long names are typeset smaller so they always stay inside the disc.
+ * Round rubber-stamp (cachet): a double ring with the agency name curved along
+ * the top and its phone number curved along the bottom, and "CACHET" in the
+ * centre. The ring texts are typeset smaller when they are long so they always
+ * stay on the arc.
  */
 function eStamp(store: StoreInfo): string {
-  const name = store.name ?? '';
-  const size = name.length > 30 ? 8 : name.length > 20 ? 9.5 : 11;
+  const name = (store.name ?? '').toUpperCase();
+  const phone = (store.phone ?? '').trim();
+  const bottom = phone ? `TÉL : ${phone}` : 'CACHET OFFICIEL';
+  const nameSize = name.length > 34 ? 8 : name.length > 26 ? 9.5 : name.length > 18 ? 11.5 : 13.5;
+  const bottomSize = bottom.length > 24 ? 8.5 : 10.5;
   return `
     <div class="cachet-circle">
-      <div class="inner">
-        <div class="cc-top">Cachet</div>
-        <div class="cc-line"></div>
-        <div class="cc-name" style="font-size:${size}px">${name}</div>
-        ${store.phone ? `<div class="cc-tel">☎ ${store.phone}</div>` : ''}
-        <div class="cc-line"></div>
-        <div class="cc-sub">Signature électronique</div>
-      </div>
+      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+        <defs>
+          <path id="cachetTop" d="M 22 100 A 78 78 0 0 1 178 100" />
+          <path id="cachetBottom" d="M 26 100 A 74 74 0 0 0 174 100" />
+        </defs>
+        <circle cx="100" cy="100" r="95" class="cc-ring cc-ring-out" />
+        <circle cx="100" cy="100" r="77" class="cc-ring cc-ring-in" />
+        <text class="cc-arc" font-size="${nameSize}">
+          <textPath href="#cachetTop" xlink:href="#cachetTop" startOffset="50%" text-anchor="middle">${name}</textPath>
+        </text>
+        <text class="cc-arc" font-size="${bottomSize}">
+          <textPath href="#cachetBottom" xlink:href="#cachetBottom" startOffset="50%" text-anchor="middle">${bottom}</textPath>
+        </text>
+        <text x="16" y="105" class="cc-star">✦</text>
+        <text x="184" y="105" class="cc-star" text-anchor="end">✦</text>
+        <text x="100" y="97" text-anchor="middle" class="cc-center" font-size="20">CACHET</text>
+        <line x1="64" y1="109" x2="136" y2="109" class="cc-divider" />
+        <text x="100" y="123" text-anchor="middle" class="cc-center-sub">Signature électronique</text>
+      </svg>
     </div>`;
 }
 
