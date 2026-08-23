@@ -97,8 +97,16 @@ export interface Room {
   furnitureDescription?: string;
   propertyType?: PropertyType; // location (rental) ou vente (sale)
   ownerClientId?: string; // client qui a confié / vendu cet appartement à l'agence
-  ownerName?: string; // nom complet du propriétaire (optionnel, saisie libre)
-  ownerPhone?: string; // téléphone du propriétaire (optionnel, saisie libre)
+  // ── Propriétaire du bien (saisie libre, tous les champs optionnels) ────────
+  ownerName?: string; // nom complet du propriétaire
+  ownerPhone?: string; // téléphone principal
+  ownerPhone2?: string; // téléphone secondaire
+  ownerEmail?: string; // e-mail
+  ownerAddress?: string; // adresse
+  ownerCity?: string; // ville / commune
+  ownerProfession?: string; // profession
+  ownerDocumentType?: DocumentType; // type de pièce d'identité
+  ownerDocumentNumber?: string; // numéro de la pièce d'identité
   mediatorId?: string; // médiateur associé à cet appartement (optionnel)
   salePrice?: number; // prix de vente affiché
   purchasePrice?: number; // prix d'achat par l'agence

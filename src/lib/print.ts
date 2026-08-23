@@ -46,19 +46,25 @@ export const PRINT_STYLES = `
   }
   .doc > * { position: relative; z-index: 1; }
 
-  /* ── Centered header: logo on top-middle, then the agency identity ── */
-  .head { text-align: center; border-bottom: 3px solid #0284c7; padding-bottom: 12px; margin-bottom: 14px; }
-  .logo-center { display: flex; justify-content: center; margin-bottom: 8px; }
-  .logo-center img { max-width: 130px; max-height: 84px; object-fit: contain; }
-  .logo-placeholder { width: 84px; height: 66px; background: linear-gradient(135deg,#0ea5e9,#0284c7); border-radius: 12px; display: grid; place-items: center; font-size: 30px; font-weight: 800; color: #fff; }
-  .brand-info h1 { font-size: 20px; color: #0369a1; font-weight: 800; letter-spacing: .3px; }
-  .brand-info p { font-size: 11px; color: #64748b; margin-top: 2px; }
-  .brand-info .description { font-size: 11px; color: #475569; font-style: italic; margin-top: 3px; }
-  .legal { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 18px; font-size: 10.5px; color: #475569; margin-top: 5px; }
-  .legal span { white-space: nowrap; }
+  /* ── Header: agency info left & right (bold), logo + name centred on top ── */
+  .head { border-bottom: 3px solid #0284c7; padding-bottom: 10px; margin-bottom: 12px; }
+  .head-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px; }
+  .head-center { text-align: center; }
+  .logo-center { display: flex; justify-content: center; margin-bottom: 5px; }
+  .logo-center img { max-width: 96px; max-height: 62px; object-fit: contain; }
+  .logo-placeholder { width: 62px; height: 54px; background: linear-gradient(135deg,#0ea5e9,#0284c7); border-radius: 12px; display: grid; place-items: center; font-size: 26px; font-weight: 800; color: #fff; }
+  .brand-name { font-size: 19px; color: #0369a1; font-weight: 800; letter-spacing: .3px; line-height: 1.1; }
+  .brand-desc { font-size: 10.5px; color: #475569; font-style: italic; margin-top: 2px; }
+
+  /* Left / right agency identity blocks — every value is bold, labels lighter. */
+  .head-side { font-size: 10.5px; line-height: 1.55; color: #0f172a; }
+  .head-side p { margin: 1.5px 0; font-weight: 700; }
+  .head-side .lbl { color: #0284c7; font-weight: 700; }
+  .head-side.left { text-align: left; }
+  .head-side.right { text-align: right; }
 
   /* Phone numbers are always emphasised. */
-  .tel, .phone, .brand-info .tel strong { font-weight: 800; color: #0f172a; }
+  .tel, .phone { font-weight: 800; color: #0f172a; }
   .tel-label { font-weight: 400; color: #64748b; }
 
   /* ── Document band (kind + number + date) under the header ── */
@@ -112,9 +118,10 @@ export const PRINT_STYLES = `
   .cachet-circle { width: 128px; height: 128px; border-radius: 50%; border: 3px solid #0284c7; display: flex; align-items: center; justify-content: center; transform: rotate(-8deg); color: #0369a1; flex-shrink: 0; }
   .cachet-circle .inner { width: 110px; height: 110px; border: 1.5px dashed #0284c7; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8px; overflow: hidden; }
   .cachet-circle .cc-top { font-size: 7px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700; }
-  .cachet-circle .cc-name { font-size: 11px; font-weight: 900; text-transform: uppercase; line-height: 1.15; margin: 3px 0; word-break: break-word; max-width: 100%; }
+  .cachet-circle .cc-name { font-size: 11px; font-weight: 900; text-transform: uppercase; line-height: 1.12; margin: 2px 0; word-break: break-word; max-width: 100%; }
+  .cachet-circle .cc-tel { font-size: 8px; font-weight: 800; letter-spacing: .2px; margin: 1px 0 2px; direction: ltr; }
   .cachet-circle .cc-sub { font-size: 6.8px; text-transform: uppercase; letter-spacing: .8px; }
-  .cachet-circle .cc-line { width: 60%; border-top: 1px solid #7dd3fc; margin: 3px 0; }
+  .cachet-circle .cc-line { width: 62%; border-top: 1px solid #7dd3fc; margin: 2px 0; }
   .foot { margin-top: 16px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
 
   /* ── Contract-specific ── */
@@ -140,10 +147,48 @@ export const PRINT_STYLES = `
   .sign-box .line { margin-top: 40px; border-top: 1px solid #94a3b8; padding-top: 5px; font-size: 10px; color: #94a3b8; }
   .sign-box.stamp-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 
+  /* ── Compact one-page mode (contrat + bon de versement) ─────────────────────
+     Tightens every vertical rhythm so the whole document fits on a single A4
+     sheet, and frames each part with a soft card border. */
+  .doc.compact { padding: 14px 16px 12px; font-size: 11px; }
+  .doc.compact .head { padding-bottom: 8px; margin-bottom: 9px; }
+  .doc.compact .logo-center img { max-width: 84px; max-height: 54px; }
+  .doc.compact .brand-name { font-size: 17px; }
+  .doc.compact .doc-band { margin-top: 7px; }
+  .doc.compact .parties { gap: 8px; margin-bottom: 9px; }
+  .doc.compact .party { padding: 8px 10px; }
+  .doc.compact .party p { margin: 1px 0; line-height: 1.38; font-size: 10px; }
+  .doc.compact .grid2 { gap: 8px; margin-bottom: 9px; }
+  .doc.compact .section { padding: 8px 10px; }
+  .doc.compact .section p { line-height: 1.4; font-size: 10.5px; }
+  .doc.compact table { margin-bottom: 8px; font-size: 10.5px; }
+  .doc.compact th { padding: 5px 8px; }
+  .doc.compact td { padding: 5px 8px; }
+  .doc.compact .tbl-head { margin: 7px 0 4px; }
+  .doc.compact .amount-hero { padding: 9px; margin-bottom: 9px; }
+  .doc.compact .amount-hero .val { font-size: 23px; margin-top: 2px; }
+  .doc.compact .fee-box { padding: 8px 11px; margin-bottom: 9px; }
+  .doc.compact .totals-wrap { padding: 8px 12px; }
+  .doc.compact .totals-wrap .row { padding: 2.5px 0; font-size: 11.5px; }
+  .doc.compact .clauses h4 { margin: 8px 0 4px; }
+  .doc.compact .clauses li { font-size: 9.5px; line-height: 1.4; margin-bottom: 2px; }
+  .doc.compact .sign-grid { margin-top: 12px; gap: 14px; }
+  .doc.compact .sign-box .line { margin-top: 26px; }
+  .doc.compact .cachet-circle { width: 112px; height: 112px; }
+  .doc.compact .cachet-circle .inner { width: 96px; height: 96px; }
+  .doc.compact .foot { margin-top: 10px; padding-top: 6px; }
+
+  /* Keep framed parts from being split across two pages. */
+  .section, .party, .fee-box, .totals-wrap, .amount-hero, .sign-grid, table { page-break-inside: avoid; }
+
+  @page { size: A4; margin: 10mm; }
+
   @media print {
-    body { padding: 0; }
+    body { padding: 0; font-size: 12px; }
     .no-print { display: none !important; }
-    .doc { border-color: #0284c7; }
+    .doc { border-color: #0284c7; max-width: 100%; margin: 0; }
+    /* Compact documents fill the sheet and drop the outer radius for print. */
+    .doc.compact { width: 100%; max-width: 100%; border-radius: 8px; }
   }
 `;
 
@@ -258,29 +303,36 @@ function tel(number?: string, label = 'Tél :'): string {
 
 /**
  * Header shared by every printed document: the logo sits centred at the very
- * top, the agency identity right under it, then a band carrying the document
- * kind, its number and its date.
+ * top with the agency name right under it, the agency contact details on the
+ * left and its legal identifiers on the right (all in bold), then a band
+ * carrying the document kind, its number and its date.
  */
 function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: string): string {
   const logoHtml = store.logo
     ? `<img src="${store.logo}" alt="logo" />`
     : `<div class="logo-placeholder">${store.name.charAt(0)}</div>`;
-  const legalItems = [
-    store.nif && `<span><strong>NIF:</strong> ${store.nif}</span>`,
-    store.nis && `<span><strong>NIS:</strong> ${store.nis}</span>`,
-    store.rc && `<span><strong>RC:</strong> ${store.rc}</span>`,
-    store.article && `<span><strong>Art:</strong> ${store.article}</span>`,
+  // Left column: how to reach the agency. Right column: its legal identity.
+  const contactLines = [
+    store.address && `<p><span class="lbl">Adresse :</span> ${store.address}</p>`,
+    store.phone && `<p><span class="lbl">Tél :</span> ${store.phone}</p>`,
+    store.email && `<p><span class="lbl">Email :</span> ${store.email}</p>`,
+  ].filter(Boolean).join('');
+  const legalLines = [
+    store.rc && `<p><span class="lbl">RC :</span> ${store.rc}</p>`,
+    store.nif && `<p><span class="lbl">NIF :</span> ${store.nif}</p>`,
+    store.nis && `<p><span class="lbl">NIS :</span> ${store.nis}</p>`,
+    store.article && `<p><span class="lbl">Art :</span> ${store.article}</p>`,
   ].filter(Boolean).join('');
   return `
     <div class="head">
-      <div class="logo-center">${logoHtml}</div>
-      <div class="brand-info">
-        <h1>${store.name}</h1>
-        ${store.description ? `<p class="description">${store.description}</p>` : ''}
-        ${store.address ? `<p>${store.address}</p>` : ''}
-        ${tel(store.phone)}
-        ${store.email ? `<p>${store.email}</p>` : ''}
-        <div class="legal">${legalItems}</div>
+      <div class="head-row">
+        <div class="head-side left">${contactLines}</div>
+        <div class="head-center">
+          <div class="logo-center">${logoHtml}</div>
+          <h1 class="brand-name">${store.name}</h1>
+          ${store.description ? `<p class="brand-desc">${store.description}</p>` : ''}
+        </div>
+        <div class="head-side right">${legalLines}</div>
       </div>
       <div class="doc-band">
         <span class="kind">${docTitle}</span>
@@ -291,8 +343,8 @@ function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: 
 }
 
 /**
- * Round electronic stamp: the agency name inside a double circle. Long names
- * are typeset smaller so they always stay inside the disc.
+ * Round electronic stamp: the agency name and its phone number inside a double
+ * circle. Long names are typeset smaller so they always stay inside the disc.
  */
 function eStamp(store: StoreInfo): string {
   const name = store.name ?? '';
@@ -303,47 +355,75 @@ function eStamp(store: StoreInfo): string {
         <div class="cc-top">Cachet</div>
         <div class="cc-line"></div>
         <div class="cc-name" style="font-size:${size}px">${name}</div>
+        ${store.phone ? `<div class="cc-tel">☎ ${store.phone}</div>` : ''}
         <div class="cc-line"></div>
         <div class="cc-sub">Signature électronique</div>
       </div>
     </div>`;
 }
 
-/** Owner block of an apartment (propriétaire du bien). */
-function ownerSection(data: AppData, roomId: string | undefined, title = '🔑 Propriétaire du bien'): string {
+/** Human label for an identity-document type. */
+function docTypeLabel(t?: Client['documentType']): string {
+  return t === 'permis' ? 'Permis' : t === 'passeport' ? 'Passeport' : 'CIN';
+}
+
+/**
+ * Resolves the owner of an apartment from either the free-text owner fields set
+ * on the apartment itself or a linked client record. Every field is optional.
+ */
+function ownerData(data: AppData, roomId: string | undefined) {
   const room = roomId ? data.rooms.find((r) => r.id === roomId) : undefined;
   const linked = room?.ownerClientId ? clientById(data, room.ownerClientId) : undefined;
-  const name = room?.ownerName || (linked ? `${linked.firstName} ${linked.lastName}` : '');
-  const phone = room?.ownerPhone || linked?.phone || '';
-  const address = [linked?.address, linked?.city].filter(Boolean).join(', ');
-  if (!name && !phone) {
+  return {
+    room,
+    name: room?.ownerName || (linked ? `${linked.firstName} ${linked.lastName}` : ''),
+    phone: room?.ownerPhone || linked?.phone || '',
+    phone2: room?.ownerPhone2 || linked?.phone2 || '',
+    email: room?.ownerEmail || linked?.email || '',
+    address: room?.ownerAddress || linked?.address || '',
+    city: room?.ownerCity || linked?.city || '',
+    profession: room?.ownerProfession || linked?.profession || '',
+    docType: room?.ownerDocumentType || linked?.documentType,
+    docNumber: room?.ownerDocumentNumber || linked?.documentNumber || '',
+  };
+}
+
+/** Owner block of an apartment (propriétaire du bien) — full information. */
+function ownerSection(data: AppData, roomId: string | undefined, title = '🔑 Propriétaire du bien'): string {
+  const o = ownerData(data, roomId);
+  if (!o.name && !o.phone) {
     return `<div class="section orange"><h3>${title}</h3><p>—</p></div>`;
   }
+  const loc = [o.address, o.city].filter(Boolean).join(', ');
+  const phones = [o.phone, o.phone2].filter(Boolean).join(' / ');
   return `
     <div class="section orange">
       <h3>${title}</h3>
-      <p><strong>${name || '—'}</strong></p>
-      ${tel(phone)}
-      ${address ? `<p>${address}</p>` : ''}
-      ${room ? `<p><span class="tel-label">Bien :</span> ${room.name}${room.commune ? ` — ${room.commune}` : ''}</p>` : ''}
+      <p><strong>${o.name || '—'}</strong>${o.profession ? ` <span class="tel-label">· ${o.profession}</span>` : ''}</p>
+      ${tel(phones)}
+      ${o.email ? `<p>${o.email}</p>` : ''}
+      ${loc ? `<p>${loc}</p>` : ''}
+      ${o.docNumber ? `<p><span class="tel-label">Pièce :</span> ${o.docNumber} (${docTypeLabel(o.docType)})</p>` : ''}
+      ${o.room ? `<p><span class="tel-label">Bien :</span> ${o.room.name}${o.room.commune ? ` — ${o.room.commune}` : ''}</p>` : ''}
     </div>`;
 }
 
 /** Owner party card used on the contract / versement (same data, party look). */
 function ownerParty(data: AppData, roomId: string | undefined): string {
-  const room = roomId ? data.rooms.find((r) => r.id === roomId) : undefined;
-  const linked = room?.ownerClientId ? clientById(data, room.ownerClientId) : undefined;
-  const name = room?.ownerName || (linked ? `${linked.firstName} ${linked.lastName}` : '');
-  const phone = room?.ownerPhone || linked?.phone || '';
-  const address = [linked?.address, linked?.city].filter(Boolean).join(', ');
+  const o = ownerData(data, roomId);
+  const loc = [o.address, o.city].filter(Boolean).join(', ');
+  const phones = [o.phone, o.phone2].filter(Boolean).join(' / ');
   return `
     <div class="party">
       <h3>Le Propriétaire</h3>
       <p class="role">Propriétaire du bien</p>
-      <p><strong>${name || '—'}</strong></p>
-      ${tel(phone)}
-      ${address ? `<p>${address}</p>` : ''}
-      ${room ? `<p><span class="tel-label">Bien :</span> ${room.name}${room.commune ? ` — ${room.commune}` : ''}</p>` : ''}
+      <p><strong>${o.name || '—'}</strong></p>
+      ${o.profession ? `<p>${o.profession}</p>` : ''}
+      ${tel(phones)}
+      ${o.email ? `<p>${o.email}</p>` : ''}
+      ${loc ? `<p>${loc}</p>` : ''}
+      ${o.docNumber ? `<p>Pièce : ${o.docNumber} (${docTypeLabel(o.docType)})</p>` : ''}
+      ${o.room ? `<p><span class="tel-label">Bien :</span> ${o.room.name}${o.room.commune ? ` — ${o.room.commune}` : ''}</p>` : ''}
     </div>`;
 }
 
@@ -850,13 +930,8 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
   }).join('');
 
   return `
-  <div class="doc">
+  <div class="doc compact">
     ${docHeader(store, r.code, `Établi le ${formatDate(r.createdAt)}`, 'Contrat de Location')}
-
-    <div class="doc-title-band">
-      <h2>Contrat de Location</h2>
-      <div class="sub">N° ${r.code} — établi le ${formatDate(r.createdAt)}</div>
-    </div>
 
     <!-- Parties: the agency (mandataire), the owner of the apartment, the tenant -->
     <div class="parties" style="grid-template-columns:1fr 1fr 1fr">
@@ -876,7 +951,7 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
         <p><strong>${client ? `${client.firstName} ${client.lastName}` : '—'}</strong></p>
         ${tel(client?.phone ? `${client.phone}${client.phone2 ? ` / ${client.phone2}` : ''}` : '')}
         ${client?.address || client?.city ? `<p>${[client?.address, client?.city].filter(Boolean).join(', ')}</p>` : ''}
-        ${client?.documentType ? `<p>Pièce : ${client.documentNumber ?? '—'} (${client.documentType})</p>` : ''}
+        ${client?.documentType ? `<p>Pièce : ${client.documentNumber ?? '—'} (${docTypeLabel(client.documentType)})</p>` : ''}
       </div>
     </div>
 
@@ -949,13 +1024,8 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
   const issueDate = r.payments[r.payments.length - 1]?.date ?? r.createdAt;
 
   return `
-  <div class="doc">
+  <div class="doc compact">
     ${docHeader(store, r.code, `Établi le ${formatDate(issueDate)}`, 'Bon de Versement')}
-
-    <div class="doc-title-band">
-      <h2>Bon de Versement</h2>
-      <div class="sub">N° ${r.code} — ${formatDate(issueDate)}</div>
-    </div>
 
     <div class="amount-hero">
       <div class="lbl">Montant total versé</div>

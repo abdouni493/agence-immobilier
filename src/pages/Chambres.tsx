@@ -4,6 +4,7 @@ import {
   BedDouble, Plus, Pencil, Trash2, Wrench, Eye, Layers, Tag, Users, Check, X,
   MapPin, Home, Tags, Handshake, Sofa, CalendarDays, CalendarRange,
   ImagePlus, Loader2, RotateCcw, Archive, ImageIcon, ChevronLeft, ChevronRight,
+  Phone, Mail, IdCard, Briefcase,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -22,7 +23,7 @@ import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, todayISO, addDaysISO, cn } from '@/lib/utils';
 import { categoryName, floorName, clientName, mediatorName, rentalPeriodOf, rentalUnits, activeRooms, deletedRooms } from '@/lib/lookups';
 import { uploadApartmentPhoto, deleteApartmentPhoto, formatBytes } from '@/lib/storage';
-import type { Room, RoomStatus, PropertyType, RentalPeriod } from '@/types';
+import type { Room, RoomStatus, PropertyType, RentalPeriod, DocumentType } from '@/types';
 
 type StatusFilter = 'all' | RoomStatus | 'rental' | 'sale';
 type PeriodFilter = 'all' | RentalPeriod;
@@ -506,6 +507,13 @@ function RoomFormModal({
   const [description, setDescription] = useState(room?.description ?? '');
   const [ownerName, setOwnerName] = useState(room?.ownerName ?? '');
   const [ownerPhone, setOwnerPhone] = useState(room?.ownerPhone ?? '');
+  const [ownerPhone2, setOwnerPhone2] = useState(room?.ownerPhone2 ?? '');
+  const [ownerEmail, setOwnerEmail] = useState(room?.ownerEmail ?? '');
+  const [ownerAddress, setOwnerAddress] = useState(room?.ownerAddress ?? '');
+  const [ownerCity, setOwnerCity] = useState(room?.ownerCity ?? '');
+  const [ownerProfession, setOwnerProfession] = useState(room?.ownerProfession ?? '');
+  const [ownerDocumentType, setOwnerDocumentType] = useState<DocumentType>(room?.ownerDocumentType ?? 'cin');
+  const [ownerDocumentNumber, setOwnerDocumentNumber] = useState(room?.ownerDocumentNumber ?? '');
   const [mediatorId, setMediatorId] = useState(room?.mediatorId ?? '');
   const [photos, setPhotos] = useState<string[]>(room?.photos ?? []);
   const [uploading, setUploading] = useState(false);
@@ -566,6 +574,13 @@ function RoomFormModal({
       ownerClientId: room?.ownerClientId || undefined,
       ownerName: ownerName.trim() || undefined,
       ownerPhone: ownerPhone.trim() || undefined,
+      ownerPhone2: ownerPhone2.trim() || undefined,
+      ownerEmail: ownerEmail.trim() || undefined,
+      ownerAddress: ownerAddress.trim() || undefined,
+      ownerCity: ownerCity.trim() || undefined,
+      ownerProfession: ownerProfession.trim() || undefined,
+      ownerDocumentType: ownerDocumentNumber.trim() ? ownerDocumentType : undefined,
+      ownerDocumentNumber: ownerDocumentNumber.trim() || undefined,
       mediatorId: mediatorId || undefined,
       salePrice: salePrice ? Number(salePrice) : undefined,
       photos,
@@ -782,13 +797,26 @@ function RoomFormModal({
           )}
         </div>
 
-        {/* Owner (free text — optional) */}
-        <div>
-          <p className="text-xs font-semibold text-ink-secondary mb-1.5">{t('apt.owner')}</p>
-          <p className="text-[11px] text-ink-muted mb-2">{t('apt.ownerHint')}</p>
+        {/* Owner (free text — optional, same fields as a client) */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-semibold text-ink-secondary mb-1 flex items-center gap-1.5">
+            <Users size={14} className="text-brand-400" /> {t('apt.owner')}
+          </p>
+          <p className="text-[11px] text-ink-muted mb-3">{t('apt.ownerHint')}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <TextField label={t('apt.ownerName')} icon={<Users size={16} />} value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder={t('apt.ownerNamePlaceholder')} />
-            <TextField label={t('apt.ownerPhone')} value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} placeholder="06 00 00 00 00" />
+            <TextField label={t('apt.ownerProfession')} icon={<Briefcase size={16} />} value={ownerProfession} onChange={(e) => setOwnerProfession(e.target.value)} />
+            <TextField label={t('apt.ownerPhone')} icon={<Phone size={16} />} value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} placeholder="06 00 00 00 00" />
+            <TextField label={t('apt.ownerPhone2')} icon={<Phone size={16} />} value={ownerPhone2} onChange={(e) => setOwnerPhone2(e.target.value)} placeholder="06 00 00 00 00" />
+            <TextField label={t('apt.ownerEmail')} type="email" icon={<Mail size={16} />} value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} />
+            <TextField label={t('apt.ownerCity')} icon={<MapPin size={16} />} value={ownerCity} onChange={(e) => setOwnerCity(e.target.value)} />
+            <TextField wrapClassName="sm:col-span-2" label={t('apt.ownerAddress')} value={ownerAddress} onChange={(e) => setOwnerAddress(e.target.value)} />
+            <SelectField label={t('apt.ownerDocType')} value={ownerDocumentType} onChange={(e) => setOwnerDocumentType(e.target.value as DocumentType)}>
+              <option value="permis">{t('clients.docPermis')}</option>
+              <option value="cin">{t('clients.docCin')}</option>
+              <option value="passeport">{t('clients.docPassport')}</option>
+            </SelectField>
+            <TextField label={t('apt.ownerDocNumber')} icon={<IdCard size={16} />} value={ownerDocumentNumber} onChange={(e) => setOwnerDocumentNumber(e.target.value)} />
           </div>
         </div>
 
@@ -954,6 +982,12 @@ function RoomDetailsModal({
               )}
               <Info label={t('apt.ownerName')} value={room.ownerName || (room.ownerClientId ? clientName(data, room.ownerClientId) : undefined)} />
               <Info label={t('apt.ownerPhone')} value={room.ownerPhone} />
+              <Info label={t('apt.ownerPhone2')} value={room.ownerPhone2} />
+              <Info label={t('apt.ownerProfession')} value={room.ownerProfession} />
+              <Info label={t('apt.ownerEmail')} value={room.ownerEmail} />
+              <Info label={t('apt.ownerCity')} value={room.ownerCity} />
+              <Info label={t('apt.ownerAddress')} value={room.ownerAddress} />
+              <Info label={t('apt.ownerDocNumber')} value={room.ownerDocumentNumber} />
               <Info label={t('apt.mediator')} value={room.mediatorId ? mediatorName(data, room.mediatorId) : undefined} />
             </div>
             {room.furnished && room.furnitureDescription && (

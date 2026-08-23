@@ -84,6 +84,13 @@ function dbToRoom(row: Record<string, unknown>): Room {
     ownerClientId: (row.owner_client_id as string) || undefined,
     ownerName: (row.owner_name as string) || undefined,
     ownerPhone: (row.owner_phone as string) || undefined,
+    ownerPhone2: (row.owner_phone2 as string) || undefined,
+    ownerEmail: (row.owner_email as string) || undefined,
+    ownerAddress: (row.owner_address as string) || undefined,
+    ownerCity: (row.owner_city as string) || undefined,
+    ownerProfession: (row.owner_profession as string) || undefined,
+    ownerDocumentType: (row.owner_document_type as Room['ownerDocumentType']) || undefined,
+    ownerDocumentNumber: (row.owner_document_number as string) || undefined,
     mediatorId: (row.mediator_id as string) || undefined,
     salePrice: row.sale_price != null ? (row.sale_price as number) : undefined,
     purchasePrice: row.purchase_price != null ? (row.purchase_price as number) : undefined,
@@ -834,6 +841,13 @@ export const useApp = create<AppState>()((set, get) => ({
         owner_client_id: r.ownerClientId || null,
         owner_name: r.ownerName || null,
         owner_phone: r.ownerPhone || null,
+        owner_phone2: r.ownerPhone2 || null,
+        owner_email: r.ownerEmail || null,
+        owner_address: r.ownerAddress || null,
+        owner_city: r.ownerCity || null,
+        owner_profession: r.ownerProfession || null,
+        owner_document_type: r.ownerDocumentType || null,
+        owner_document_number: r.ownerDocumentNumber || null,
         mediator_id: r.mediatorId || null,
         sale_price: r.salePrice ?? null,
         purchase_price: r.purchasePrice ?? null,
@@ -872,6 +886,13 @@ export const useApp = create<AppState>()((set, get) => ({
     if (patch.ownerClientId !== undefined) dbPatch.owner_client_id = patch.ownerClientId || null;
     if (patch.ownerName !== undefined) dbPatch.owner_name = patch.ownerName || null;
     if (patch.ownerPhone !== undefined) dbPatch.owner_phone = patch.ownerPhone || null;
+    if (patch.ownerPhone2 !== undefined) dbPatch.owner_phone2 = patch.ownerPhone2 || null;
+    if (patch.ownerEmail !== undefined) dbPatch.owner_email = patch.ownerEmail || null;
+    if (patch.ownerAddress !== undefined) dbPatch.owner_address = patch.ownerAddress || null;
+    if (patch.ownerCity !== undefined) dbPatch.owner_city = patch.ownerCity || null;
+    if (patch.ownerProfession !== undefined) dbPatch.owner_profession = patch.ownerProfession || null;
+    if (patch.ownerDocumentType !== undefined) dbPatch.owner_document_type = patch.ownerDocumentType || null;
+    if (patch.ownerDocumentNumber !== undefined) dbPatch.owner_document_number = patch.ownerDocumentNumber || null;
     if (patch.mediatorId !== undefined) dbPatch.mediator_id = patch.mediatorId || null;
     if (patch.salePrice !== undefined) dbPatch.sale_price = patch.salePrice ?? null;
     if (patch.purchasePrice !== undefined) dbPatch.purchase_price = patch.purchasePrice ?? null;

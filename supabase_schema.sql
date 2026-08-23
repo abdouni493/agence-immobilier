@@ -98,6 +98,17 @@ CREATE TABLE IF NOT EXISTS public.rooms (
   owner_client_id  uuid,
   owner_name       text,
   owner_phone      text,
+  -- Full owner details (all optional, typed like a client) — printed on the
+  -- rental contract and the payment voucher.
+  owner_phone2          text,
+  owner_email           text,
+  owner_address         text,
+  owner_city            text,
+  owner_profession      text,
+  owner_document_type   text
+                     CHECK (owner_document_type IS NULL
+                            OR owner_document_type = ANY (ARRAY['permis'::text, 'cin'::text, 'passeport'::text])),
+  owner_document_number text,
   mediator_id      uuid,
   sale_price       numeric,
   purchase_price   numeric,
