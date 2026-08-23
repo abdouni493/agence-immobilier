@@ -343,16 +343,6 @@ export default function Login() {
                         {t('login.signIn')}
                       </GradientButton>
                     </motion.div>
-
-                    <motion.div variants={fadeInUp} className="pt-2 text-center">
-                      <button
-                        type="button"
-                        onClick={() => switchMode('signup')}
-                        className="text-sm font-semibold text-brand-600 hover:text-brand-700 transition-colors"
-                      >
-                        {t('login.createAccount')}
-                      </button>
-                    </motion.div>
                   </motion.form>
                 ) : (
                   /* ── Sign-up (create admin account) form ── */
