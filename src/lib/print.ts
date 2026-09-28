@@ -1090,80 +1090,113 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
   </div>`;
 }
 
-// ─── فسخ عقد إيجار (termination of a rental contract) ───────────────────────
+// ─── Résiliation / فسخ عقد إيجار (termination of a rental contract) ─────────
+
+export type TerminationLang = 'fr' | 'ar';
 
 function escapeHtml(v: string): string {
   return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** Stand-alone styles of the Arabic termination letter (gold & brown charter). */
+/** dd/mm/yyyy — reads the same in the French and the Arabic letter. */
+function numDate(iso?: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
+
+/** Stand-alone styles of the termination letter (gold & brown charter). */
 const TERMINATION_STYLES = `
   @page { size: A4; margin: 0; }
   html, body { padding: 0 !important; margin: 0; background: #fff; }
   .tm, .tm * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
   .tm {
-    --gold: #b08d57; --gold-2: #d4b483; --brown: #4a3426; --ink: #2b2118;
-    position: relative; width: 210mm; height: 296mm; margin: 0 auto; overflow: hidden;
+    --gold: #b08d57; --gold-2: #e3cfa9; --gold-3: #f7f0e3; --brown: #4a3426; --ink: #2b2118; --muted: #6b5a4a;
+    position: relative; width: 210mm; min-height: 296mm; margin: 0 auto; overflow: hidden;
     display: flex; flex-direction: column; background: #fdfcfa; color: var(--ink);
-    font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 14px;
+    font-family: 'Segoe UI', 'Cairo', 'Tajawal', Tahoma, Arial, sans-serif; font-size: 12.5px; line-height: 1.45;
   }
-  .tm-corner-tl { position: absolute; top: 0; left: 0; width: 70px; height: 70px;
-    background: linear-gradient(135deg, var(--brown) 0 50%, transparent 50%); }
-  .tm-corner-tr { position: absolute; top: 0; right: 0; width: 38px; height: 38px;
-    background: linear-gradient(225deg, var(--gold) 0 50%, transparent 50%); }
-  .tm-head { display: flex; align-items: center; justify-content: space-between; direction: ltr;
-    padding: 26px 46px 16px; border-bottom: 2px solid var(--gold); }
-  .tm-brand { display: flex; flex-direction: column; align-items: center; min-width: 230px; }
-  .tm-brand img { max-height: 70px; max-width: 150px; object-fit: contain; margin-bottom: 4px; }
-  .tm-brand svg { width: 150px; height: 58px; }
-  .tm-brand .nm { font-family: Georgia, 'Times New Roman', serif; font-size: 30px; font-weight: 700;
-    letter-spacing: 2px; color: var(--brown); line-height: 1.05; text-transform: uppercase; text-align: center; }
-  .tm-brand .sub { display: flex; align-items: center; gap: 8px; margin-top: 4px; color: var(--gold);
-    font-size: 12px; letter-spacing: 5px; font-weight: 700; }
-  .tm-brand .sub::before, .tm-brand .sub::after { content: ''; width: 26px; height: 1.5px; background: var(--gold); }
-  .tm-services { display: flex; align-items: stretch; gap: 16px; direction: rtl; }
-  .tm-services .bar { width: 2px; background: var(--gold); }
-  .tm-services .txt { font-weight: 800; font-size: 15px; line-height: 1.7; color: var(--ink); }
-  .tm-services .motto { margin-top: 8px; font-family: 'Brush Script MT', 'Segoe Script', cursive;
-    color: var(--brown); font-size: 17px; direction: ltr; text-align: center; line-height: 1.1; }
-  .tm-title { text-align: center; margin-top: 22px; }
-  .tm-pill { display: inline-block; padding: 8px 44px; border-radius: 12px; color: #fff; font-size: 28px; font-weight: 800;
+  .tm[dir="rtl"] { font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 13px; }
+  .tm-corner-a { position: absolute; top: 0; inset-inline-start: 0; width: 64px; height: 64px; background: var(--brown); clip-path: polygon(0 0, 100% 0, 0 100%); }
+  .tm[dir="rtl"] .tm-corner-a { clip-path: polygon(0 0, 100% 0, 100% 100%); }
+  .tm-corner-b { position: absolute; top: 0; inset-inline-end: 0; width: 34px; height: 34px; background: var(--gold); clip-path: polygon(0 0, 100% 0, 100% 100%); }
+  .tm[dir="rtl"] .tm-corner-b { clip-path: polygon(0 0, 100% 0, 0 100%); }
+
+  /* Header: logo + agency identity | services & contact | legal ids */
+  .tm-head { display: grid; grid-template-columns: auto 1fr auto; gap: 18px; align-items: center;
+    padding: 22px 38px 12px; border-bottom: 2px solid var(--gold); }
+  .tm-brand { display: flex; align-items: center; gap: 12px; }
+  .tm-logo { width: 78px; height: 78px; display: grid; place-items: center; border-radius: 14px; background: #fff;
+    border: 1.5px solid var(--gold-2); overflow: hidden; flex-shrink: 0; }
+  .tm-logo img { max-width: 72px; max-height: 72px; object-fit: contain; }
+  .tm-logo svg { width: 64px; height: 50px; }
+  .tm-brand .nm { font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 700; letter-spacing: 1px;
+    color: var(--brown); line-height: 1.1; text-transform: uppercase; }
+  .tm-brand .desc { font-size: 11px; color: var(--gold); font-weight: 700; margin-top: 3px; }
+  .tm-brand .svc { font-size: 11px; color: var(--muted); font-weight: 600; margin-top: 2px; }
+  .tm-contact { font-size: 11px; color: var(--ink); justify-self: center; }
+  .tm-contact p, .tm-legal p { display: flex; gap: 6px; margin: 1.5px 0; white-space: nowrap; }
+  .tm-contact b, .tm-legal b { color: var(--gold); font-weight: 800; min-width: 44px; }
+  .tm-legal { font-size: 11px; padding-inline-start: 14px; border-inline-start: 2px solid var(--gold); }
+  .tm-legal .motto { font-family: 'Brush Script MT', 'Segoe Script', cursive; color: var(--brown); font-size: 15px; margin-top: 4px; direction: ltr; }
+
+  .tm-band { display: flex; justify-content: space-between; align-items: center; margin: 0 38px; padding: 6px 14px;
+    background: var(--gold-3); border: 1px solid var(--gold-2); border-top: 0; border-radius: 0 0 10px 10px; font-size: 11.5px; }
+  .tm-band b { color: var(--brown); }
+
+  .tm-title { text-align: center; margin-top: 14px; }
+  .tm-pill { display: inline-block; padding: 7px 40px; border-radius: 12px; color: #fff; font-size: 24px; font-weight: 800; letter-spacing: .5px;
     background: linear-gradient(180deg, #c4a06a, var(--gold) 55%, #94703f); box-shadow: 0 3px 8px rgba(74,52,38,.25); }
-  .tm-agency { margin-top: 8px; font-size: 20px; font-weight: 800; }
-  .tm-agency-lat { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 2px;
-    color: var(--brown); font-size: 20px; letter-spacing: 1.5px; direction: ltr; font-weight: 800; }
-  .tm-agency-lat::before, .tm-agency-lat::after { content: ''; width: 150px; height: 1.5px; background: var(--gold-2); }
-  .tm-body { direction: rtl; text-align: right; padding: 14px 46px 0; line-height: 1.5; flex: 1; }
-  .tm-body .lead { font-weight: 800; font-size: 15px; margin: 10px 0 6px; }
-  .tm-row { display: flex; align-items: flex-end; gap: 8px; margin: 9px 0; }
-  .tm-row .k { white-space: nowrap; font-weight: 700; }
-  .tm-fill { flex: 1; min-height: 22px; border-bottom: 1.6px dotted #6b5a4a; padding: 0 6px 1px; font-weight: 600; color: #1d1a16; }
-  .tm-check { display: flex; align-items: center; gap: 40px; margin: 9px 0; }
-  .tm-check .k { font-weight: 700; min-width: 70px; }
-  .tm-box { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
-  .tm-box i { display: inline-grid; place-items: center; width: 17px; height: 17px; border: 1.6px solid #3b3025;
-    border-radius: 3px; font-style: normal; font-size: 13px; line-height: 1; font-weight: 900; color: var(--brown); }
-  .tm-line { min-height: 24px; border-bottom: 1.6px dotted #6b5a4a; padding: 0 6px 1px; font-weight: 600; margin: 4px 0; }
-  .tm-closing { margin-top: 18px; font-weight: 800; }
-  .tm-made { width: 44%; margin: 16px auto 0 0; }
-  .tm-made .tm-row { margin: 6px 0; }
-  .tm-signs { display: flex; justify-content: space-between; gap: 40px; padding: 18px 60px 0; direction: rtl; }
-  .tm-sign { width: 205px; text-align: center; }
-  .tm-sign .who { font-weight: 800; font-size: 15px; margin-bottom: 8px; }
-  .tm-sign .frame { height: 78px; border: 1.6px solid var(--brown); border-radius: 10px; background: #fff; }
-  .tm-sign .nm { margin-top: 4px; font-size: 12px; color: #5b4c3f; min-height: 16px; }
-  .tm-foot { position: relative; margin-top: 18px; height: 64px; direction: ltr; flex-shrink: 0; }
-  .tm-foot .band { position: absolute; left: 0; bottom: 0; height: 52px; width: 64%;
-    background: var(--brown); clip-path: polygon(0 0, 88% 0, 100% 100%, 0 100%);
-    display: flex; align-items: center; gap: 10px; padding-left: 40px; color: #fff; font-weight: 700; letter-spacing: 1px; }
-  .tm-foot .band small { font-weight: 400; opacity: .85; letter-spacing: 0; margin-left: 10px; }
-  .tm-foot .gold { position: absolute; left: 0; bottom: 52px; height: 5px; width: 62%; background: var(--gold); }
-  .tm-foot .tag { position: absolute; left: 50%; bottom: 14px; font-family: 'Brush Script MT', 'Segoe Script', cursive;
-    font-size: 15px; color: var(--brown); }
-  .tm-foot .corner { position: absolute; right: 0; bottom: 0; width: 120px; height: 64px;
-    background: linear-gradient(315deg, var(--brown) 0 32%, var(--gold) 32% 38%, transparent 38%); }
-  .tm-watermark { position: absolute; right: 70px; bottom: 60px; width: 150px; opacity: .10; pointer-events: none; }
+  .tm-agency { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 6px;
+    color: var(--brown); font-size: 15px; letter-spacing: 1.2px; font-weight: 800; }
+  .tm-agency::before, .tm-agency::after { content: ''; width: 110px; height: 1.5px; background: var(--gold-2); }
+
+  .tm-body { padding: 8px 38px 0; flex: 1; }
+  .tm-sec { margin-top: 10px; }
+  .tm-sec h3 { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 800; color: var(--brown); margin-bottom: 4px; }
+  .tm-sec h3::before { content: ''; width: 6px; height: 16px; border-radius: 3px; background: var(--gold); }
+  .tm-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; }
+  .tm-row { display: flex; align-items: flex-end; gap: 8px; margin: 5px 0; }
+  .tm-row .k { white-space: nowrap; font-weight: 700; color: var(--muted); }
+  .tm-fill { flex: 1; min-height: 20px; border-bottom: 1.4px dotted #8a7766; padding: 0 5px 1px; font-weight: 700; color: #1d1a16; }
+  .tm-check { display: flex; align-items: center; gap: 34px; margin: 6px 0; }
+  .tm-check .k { font-weight: 700; color: var(--muted); }
+  .tm-box { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
+  .tm-box i { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1.6px solid #3b3025;
+    border-radius: 3px; font-style: normal; font-size: 12px; line-height: 1; font-weight: 900; color: var(--brown); }
+  .tm-decl { margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--gold-3); border: 1px solid var(--gold-2); font-weight: 700; }
+  .tm-line { min-height: 22px; border-bottom: 1.4px dotted #8a7766; padding: 0 5px 1px; font-weight: 600; margin: 3px 0; }
+  .tm-closing { margin-top: 10px; font-weight: 800; }
+  .tm-made { width: 46%; margin-top: 8px; margin-inline-start: auto; }
+  .tm-made .tm-row { margin: 4px 0; }
+
+  .tm-signs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; padding: 12px 38px 0; align-items: start; }
+  .tm-sign { text-align: center; }
+  .tm-sign .who { font-weight: 800; font-size: 12.5px; margin-bottom: 6px; color: var(--brown); }
+  .tm-sign .frame { height: 84px; border: 1.6px solid var(--brown); border-radius: 10px; background: #fff; display: grid; place-items: center; }
+  .tm-sign .nm { margin-top: 3px; font-size: 11px; color: var(--muted); min-height: 15px; }
+  .tm .cachet-circle { width: 80px; height: 80px; }
+  .tm .cachet-circle .cc-ring { stroke: var(--brown); }
+  .tm .cachet-circle .cc-arc, .tm .cachet-circle .cc-star, .tm .cachet-circle .cc-center { fill: var(--brown); }
+  .tm .cachet-circle .cc-center-sub { fill: var(--gold); }
+  .tm .cachet-circle .cc-divider { stroke: var(--gold); }
+
+  .tm-watermark { position: absolute; inset-inline-end: 60px; bottom: 90px; width: 150px; opacity: .08; pointer-events: none; }
   .tm-watermark svg { width: 150px; height: 58px; }
+
+  .tm-foot { position: relative; margin-top: 14px; height: 60px; flex-shrink: 0; }
+  .tm-foot .gold { position: absolute; inset-inline-start: 0; bottom: 48px; height: 4px; width: 72%; background: var(--gold); }
+  .tm-foot .band { position: absolute; inset-inline-start: 0; bottom: 0; height: 48px; width: 74%; background: var(--brown);
+    clip-path: polygon(0 0, 92% 0, 100% 100%, 0 100%); display: flex; align-items: center; gap: 16px;
+    padding-inline-start: 38px; color: #fff; font-size: 11px; font-weight: 600; }
+  .tm[dir="rtl"] .tm-foot .band { clip-path: polygon(8% 0, 100% 0, 100% 100%, 0 100%); }
+  .tm-foot .band span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .tm-foot .band strong { letter-spacing: 1px; }
+  .tm-foot .tag { position: absolute; inset-inline-end: 110px; bottom: 14px; font-family: 'Brush Script MT', 'Segoe Script', cursive;
+    font-size: 14px; color: var(--brown); direction: ltr; }
+  .tm-foot .corner { position: absolute; inset-inline-end: 0; bottom: 0; width: 96px; height: 60px; background: var(--brown);
+    clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+  .tm[dir="rtl"] .tm-foot .corner { clip-path: polygon(0 0, 100% 100%, 0 100%); }
 `;
 
 /** Line-art house used when the agency has no logo (and as a watermark). */
@@ -1177,102 +1210,200 @@ function houseSvg(stroke = '#b08d57', roof = '#4a3426'): string {
   </svg>`;
 }
 
+const TERMINATION_TEXT = {
+  fr: {
+    title: 'Résiliation de Contrat de Location',
+    agency: 'Agence Immobilière',
+    services: 'Vente · Achat · Location · Échange · Gestion immobilière',
+    address: 'Adresse', phone: 'Tél', email: 'Email',
+    docNo: 'Réf. contrat', issued: 'Établi le',
+    signerSec: 'Le / la soussigné(e)', fullName: 'Nom et prénom :', capacity: 'En qualité de :',
+    tenant: 'Locataire', owner: 'Propriétaire', tel: 'Téléphone :', addr: 'Adresse :', idDoc: "Pièce d'identité :",
+    declare: 'Déclare vouloir résilier le contrat de location portant sur le bien désigné ci-dessous :',
+    propSec: 'Bien loué & contrat', property: 'Bien :', location: 'Adresse du bien :', details: 'Caractéristiques :',
+    concludedWith: 'Conclu avec M./Mme :', startDate: 'Date du contrat :', endDate: 'Échéance prévue :',
+    termDate: 'Date de résiliation :', rent: 'Loyer :',
+    reasonsSec: 'Motifs de la résiliation', closing: "En conséquence, je vous prie de bien vouloir procéder aux formalités de résiliation du contrat de location conformément à la réglementation en vigueur.",
+    madeAt: 'Fait à :', date: 'Le :',
+    signTenant: 'Signature du locataire', signOwner: 'Signature du propriétaire', signAgency: "Cachet de l'agence",
+    furnished: 'Meublé', unfurnished: 'Non meublé', rooms: 'pièce(s)', floor: 'Étage',
+    perMonth: '/ mois', perNight: '/ nuit',
+  },
+  ar: {
+    title: 'فسخ عقد إيجار',
+    agency: 'وكالة عقارية',
+    services: 'بيع - شراء - كراء - مبادلة - تسيير عقارات',
+    address: 'العنوان', phone: 'الهاتف', email: 'البريد',
+    docNo: 'مرجع العقد', issued: 'حرر بتاريخ',
+    signerSec: 'أنا الموقع(ة) أسفله', fullName: 'الاسم واللقب :', capacity: 'بصفتي :',
+    tenant: 'المستأجر', owner: 'المالك', tel: 'رقم الهاتف :', addr: 'العنوان :', idDoc: 'وثيقة الهوية :',
+    declare: 'أصرح بأنني أرغب في فسخ عقد الإيجار الخاص بالمحل المذكور أدناه :',
+    propSec: 'المحل المؤجر والعقد', property: 'المحل :', location: 'الكائن بـ :', details: 'المواصفات :',
+    concludedWith: 'والمبرم مع السيد(ة) :', startDate: 'بتاريخ :', endDate: 'تاريخ الانتهاء المقرر :',
+    termDate: 'تاريخ الفسخ :', rent: 'مبلغ الإيجار :',
+    reasonsSec: 'وذلك للأسباب التالية', closing: 'وعليه أطلب من طرفكم إتمام إجراءات فسخ عقد الإيجار وفقا للقوانين المعمول بها.',
+    madeAt: 'حرر في :', date: 'التاريخ :',
+    signTenant: 'توقيع المستأجر', signOwner: 'توقيع المالك', signAgency: 'ختم الوكالة',
+    furnished: 'مفروش', unfurnished: 'غير مفروش', rooms: 'غرف', floor: 'الطابق',
+    perMonth: '/ شهر', perNight: '/ ليلة',
+  },
+} as const;
+
 /**
- * Printable "فسخ عقد إيجار" letter, laid out like the agency's paper template:
- * the requester (tenant or owner) declares the termination of the lease of the
- * apartment, with the reasons, the place & date, and both signature boxes.
+ * Printable termination letter (résiliation / فسخ عقد إيجار) in French or
+ * Arabic, on the agency's gold & brown template: full agency identity (logo,
+ * contact, legal ids), the requester (tenant or owner), the rented property and
+ * contract, the reasons, place & date, and the three signature boxes.
  */
-export function buildTerminationHTML(data: AppData, r: Reservation, store: StoreInfo): string {
+export function buildTerminationHTML(
+  data: AppData,
+  r: Reservation,
+  store: StoreInfo,
+  lang: TerminationLang = 'ar',
+): string {
+  const T = TERMINATION_TEXT[lang];
+  const esc = (v?: string) => escapeHtml(v ?? '');
+  const box = (on: boolean) => `<i>${on ? '✓' : ''}</i>`;
+  const row = (k: string, v: string, ltr = false) =>
+    `<div class="tm-row"><span class="k">${k}</span><span class="tm-fill">${ltr ? `<bdi dir="ltr">${v}</bdi>` : v}</span></div>`;
+
   const client = clientById(data, r.clientId);
   const owner = ownerData(data, r.rooms[0]?.roomId);
   const tenantName = client ? `${client.firstName} ${client.lastName}` : '';
-  const tenantAddress = [client?.address, client?.city].filter(Boolean).join('، ');
-  const ownerAddress = [owner.address, owner.city].filter(Boolean).join('، ');
+  const sep = lang === 'ar' ? '، ' : ', ';
   const byOwner = r.terminatedBy === 'owner';
 
   // The signer is the party requesting the termination; the contract was
   // concluded with the other party.
   const signer = byOwner
-    ? { name: owner.name, phone: [owner.phone, owner.phone2].filter(Boolean).join(' / '), address: ownerAddress }
-    : { name: tenantName, phone: [client?.phone, client?.phone2].filter(Boolean).join(' / '), address: tenantAddress };
+    ? {
+        name: owner.name,
+        phone: [owner.phone, owner.phone2].filter(Boolean).join(' / '),
+        address: [owner.address, owner.city].filter(Boolean).join(sep),
+        doc: owner.docNumber ? `${owner.docNumber} (${docTypeLabel(owner.docType)})` : '',
+      }
+    : {
+        name: tenantName,
+        phone: [client?.phone, client?.phone2].filter(Boolean).join(' / '),
+        address: [client?.address, client?.city].filter(Boolean).join(sep),
+        doc: client?.documentNumber ? `${client.documentNumber} (${docTypeLabel(client.documentType)})` : '',
+      };
   const counterparty = byOwner ? tenantName : owner.name;
 
-  const propertyAddress = r.rooms
-    .map((rr) => {
-      const room = data.rooms.find((x) => x.id === rr.roomId);
-      return room ? [room.name, room.commune].filter(Boolean).join(' — ') : '';
-    })
-    .filter(Boolean)
-    .join(' ، ');
+  const rooms = r.rooms.map((rr) => ({ rr, room: data.rooms.find((x) => x.id === rr.roomId) }));
+  const propertyNames = rooms.map(({ room }) => room?.name).filter(Boolean).join(sep);
+  const propertyPlace = [...new Set(rooms.map(({ room }) => room?.commune).filter(Boolean))].join(sep);
+  const first = rooms[0]?.room;
+  const floor = first ? data.floors.find((f) => f.id === first.floorId)?.name : '';
+  const details = first
+    ? [
+        `${first.capacity} ${T.rooms}`,
+        floor && `${T.floor} ${floor}`,
+        first.furnished ? T.furnished : T.unfurnished,
+      ].filter(Boolean).join(' · ')
+    : '';
+  const monthly = reservationPeriod(data, r) === 'month';
+  const rent = r.rooms.reduce((s, rr) => s + rr.pricePerNight, 0);
 
   const reasons = (r.terminationReason ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const reasonLines = reasons.length >= 3 ? reasons : [...reasons, '', '', ''].slice(0, 3);
 
-  // "EL BAHIA IMMOBILIER" → big "EL BAHIA" + spaced "IMMOBILIER" underneath.
-  const nameParts = (store.name || 'Agence').trim().split(/\s+/);
-  const brandMain = nameParts.length > 2 ? nameParts.slice(0, -1).join(' ') : nameParts.join(' ');
-  const brandSub = nameParts.length > 2 ? nameParts[nameParts.length - 1] : 'IMMOBILIER';
+  const logo = store.logo ? `<img src="${store.logo}" alt="logo" />` : houseSvg();
+  const contact = [
+    store.address && `<p><b>${T.address}</b><span>${esc(store.address)}</span></p>`,
+    store.phone && `<p><b>${T.phone}</b><bdi dir="ltr">${esc(store.phone)}</bdi></p>`,
+    store.email && `<p><b>${T.email}</b><span>${esc(store.email)}</span></p>`,
+  ].filter(Boolean).join('');
+  const legal = [
+    store.rc && `<p><b>RC</b><span>${esc(store.rc)}</span></p>`,
+    store.nif && `<p><b>NIF</b><span>${esc(store.nif)}</span></p>`,
+    store.nis && `<p><b>NIS</b><span>${esc(store.nis)}</span></p>`,
+    store.article && `<p><b>Art</b><span>${esc(store.article)}</span></p>`,
+  ].filter(Boolean).join('');
 
-  const esc = (v?: string) => escapeHtml(v ?? '');
-  const box = (on: boolean) => `<i>${on ? '✓' : ''}</i>`;
+  const pin = `<svg width="13" height="16" viewBox="0 0 24 30" fill="#d4b483"><path d="M12 0C5.4 0 0 5.2 0 11.7 0 20.4 12 30 12 30s12-9.6 12-18.3C24 5.2 18.6 0 12 0zm0 16.5a4.8 4.8 0 110-9.6 4.8 4.8 0 010 9.6z"/></svg>`;
 
   return `
   <style>${TERMINATION_STYLES}</style>
-  <div class="tm">
-    <div class="tm-corner-tl"></div>
-    <div class="tm-corner-tr"></div>
+  <div class="tm" dir="${lang === 'ar' ? 'rtl' : 'ltr'}" lang="${lang}">
+    <div class="tm-corner-a"></div>
+    <div class="tm-corner-b"></div>
 
     <div class="tm-head">
       <div class="tm-brand">
-        ${store.logo ? `<img src="${store.logo}" alt="logo" />` : houseSvg()}
-        <div class="nm">${esc(brandMain)}</div>
-        <div class="sub">${esc(brandSub.toUpperCase())}</div>
-      </div>
-      <div class="tm-services">
+        <div class="tm-logo">${logo}</div>
         <div>
-          <div class="txt">بيع - شراء - كراء<br/>مبادلة - تسيير عقارات</div>
-          <div class="motto">Votre confiance,<br/>notre priorité</div>
+          <div class="nm">${esc(store.name)}</div>
+          ${store.description ? `<div class="desc">${esc(store.description)}</div>` : `<div class="desc">${T.agency}</div>`}
+          <div class="svc">${T.services}</div>
         </div>
-        <div class="bar"></div>
       </div>
+      <div class="tm-contact">${contact}</div>
+      <div class="tm-legal">${legal}<div class="motto">Votre confiance, notre priorité</div></div>
+    </div>
+    <div class="tm-band">
+      <span>${T.docNo} : <b><bdi dir="ltr">${esc(r.code)}</bdi></b></span>
+      <span>${T.issued} : <b><bdi dir="ltr">${numDate(r.terminationDate)}</bdi></b></span>
     </div>
 
     <div class="tm-title">
-      <span class="tm-pill">فسخ عقد إيجار</span>
-      <div class="tm-agency">وكالة عقارية</div>
-      <div class="tm-agency-lat"><span>${esc((store.name || '').toUpperCase())}</span></div>
+      <span class="tm-pill">${T.title}</span>
+      <div class="tm-agency"><span>${T.agency} — ${esc((store.name || '').toUpperCase())}</span></div>
     </div>
 
     <div class="tm-body">
-      <p class="lead">أنا الموقع أسفله :</p>
-      <div class="tm-row"><span class="k">الاسم واللقب :</span><span class="tm-fill">${esc(signer.name)}</span></div>
-      <div class="tm-check">
-        <span class="k">بصفتي :</span>
-        <span class="tm-box">${box(!byOwner)} المستأجر</span>
-        <span class="tm-box">${box(byOwner)} المالك</span>
+      <div class="tm-sec">
+        <h3>${T.signerSec}</h3>
+        ${row(T.fullName, esc(signer.name))}
+        <div class="tm-check">
+          <span class="k">${T.capacity}</span>
+          <span class="tm-box">${box(!byOwner)} ${T.tenant}</span>
+          <span class="tm-box">${box(byOwner)} ${T.owner}</span>
+        </div>
+        <div class="tm-grid">
+          ${row(T.tel, esc(signer.phone), true)}
+          ${row(T.idDoc, esc(signer.doc))}
+        </div>
+        ${row(T.addr, esc(signer.address))}
       </div>
-      <div class="tm-row"><span class="k">رقم الهاتف :</span><span class="tm-fill"><bdi>${esc(signer.phone)}</bdi></span></div>
-      <div class="tm-row"><span class="k">العنوان :</span><span class="tm-fill">${esc(signer.address)}</span></div>
 
-      <p class="lead" style="margin-top:14px">أصرح بأنني أرغب في فسخ عقد الإيجار الخاص بالمحل الكائن بـ :</p>
-      <div class="tm-row"><span class="k">العنوان :</span><span class="tm-fill">${esc(propertyAddress)}</span></div>
-      <div class="tm-row"><span class="k">والمبرم مع السيد(ة) :</span><span class="tm-fill">${esc(counterparty)}</span></div>
-      <div class="tm-row"><span class="k">بتاريخ :</span><span class="tm-fill"><bdi>${formatDate(r.checkIn)}</bdi></span></div>
+      <p class="tm-decl">${T.declare}</p>
 
-      <p class="lead" style="margin-top:14px">وذلك للأسباب التالية :</p>
-      ${reasonLines.map((l) => `<div class="tm-line">${esc(l)}</div>`).join('')}
+      <div class="tm-sec">
+        <h3>${T.propSec}</h3>
+        <div class="tm-grid">
+          ${row(T.property, esc(propertyNames))}
+          ${row(T.location, esc(propertyPlace))}
+        </div>
+        <div class="tm-grid">
+          ${row(T.details, esc(details))}
+          ${row(T.rent, `${formatDA(rent)} ${monthly ? T.perMonth : T.perNight}`, true)}
+        </div>
+        ${row(T.concludedWith, esc(counterparty))}
+        <div class="tm-grid">
+          ${row(T.startDate, numDate(r.checkIn), true)}
+          ${row(T.endDate, numDate(r.checkOut), true)}
+        </div>
+        ${row(T.termDate, numDate(r.terminationDate), true)}
+      </div>
 
-      <p class="tm-closing">وعليه أطلب من طرفكم إتمام إجراءات فسخ عقد الإيجار وفقا للقوانين المعمول بها.</p>
+      <div class="tm-sec">
+        <h3>${T.reasonsSec}</h3>
+        ${reasonLines.map((l) => `<div class="tm-line">${esc(l)}</div>`).join('')}
+      </div>
+
+      <p class="tm-closing">${T.closing}</p>
 
       <div class="tm-made">
-        <div class="tm-row"><span class="k">حرر في :</span><span class="tm-fill">${esc(r.terminationPlace)}</span></div>
-        <div class="tm-row"><span class="k">التاريخ :</span><span class="tm-fill"><bdi>${r.terminationDate ? formatDate(r.terminationDate) : ''}</bdi></span></div>
+        ${row(T.madeAt, esc(r.terminationPlace))}
+        ${row(T.date, numDate(r.terminationDate), true)}
       </div>
     </div>
 
     <div class="tm-signs">
-      <div class="tm-sign"><p class="who">توقيع المستأجر</p><div class="frame"></div><p class="nm">${esc(tenantName)}</p></div>
-      <div class="tm-sign"><p class="who">توقيع المالك</p><div class="frame"></div><p class="nm">${esc(owner.name)}</p></div>
+      <div class="tm-sign"><p class="who">${T.signTenant}</p><div class="frame"></div><p class="nm">${esc(tenantName)}</p></div>
+      <div class="tm-sign"><p class="who">${T.signAgency}</p><div class="frame">${eStamp(store)}</div><p class="nm">${esc(store.name)}</p></div>
+      <div class="tm-sign"><p class="who">${T.signOwner}</p><div class="frame"></div><p class="nm">${esc(owner.name)}</p></div>
     </div>
 
     <div class="tm-watermark">${houseSvg('#8a7a6a', '#8a7a6a')}</div>
@@ -1280,9 +1411,9 @@ export function buildTerminationHTML(data: AppData, r: Reservation, store: Store
     <div class="tm-foot">
       <div class="gold"></div>
       <div class="band">
-        <svg width="18" height="22" viewBox="0 0 24 30" fill="#fff"><path d="M12 0C5.4 0 0 5.2 0 11.7 0 20.4 12 30 12 30s12-9.6 12-18.3C24 5.2 18.6 0 12 0zm0 16.5a4.8 4.8 0 110-9.6 4.8 4.8 0 010 9.6z"/></svg>
-        ${esc((store.name || '').toUpperCase())}
-        ${store.phone ? `<small>${esc(store.phone)}</small>` : ''}
+        <span>${pin}<strong>${esc((store.name || '').toUpperCase())}</strong></span>
+        ${store.address ? `<span>${esc(store.address)}</span>` : ''}
+        ${store.phone ? `<span><bdi dir="ltr">${esc(store.phone)}</bdi></span>` : ''}
       </div>
       <div class="tag">Ensemble pour vos projets immobiliers</div>
       <div class="corner"></div>

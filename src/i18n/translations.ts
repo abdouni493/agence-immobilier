@@ -285,6 +285,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     'res.printTermination': 'Contrat de résiliation',
     'res.printTerminationDesc': 'Lettre « فسخ عقد إيجار » à signer par le locataire et le propriétaire',
     'res.askPrintTermination': 'Voulez-vous imprimer le contrat de résiliation maintenant ?',
+    'res.chooseLang': 'Langue du document de résiliation',
 
     // Reservation alerts
     'resAlert.filterTitle': 'Alertes locations',
@@ -974,6 +975,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     'res.printTermination': 'وثيقة فسخ العقد',
     'res.printTerminationDesc': 'وثيقة فسخ عقد إيجار للتوقيع من الأطراف',
     'res.askPrintTermination': 'هل تريد طباعة وثيقة فسخ العقد الآن؟',
+    'res.chooseLang': 'لغة وثيقة الفسخ',
 
     // Reservation alerts
     'resAlert.filterTitle': 'تنبيهات الحجوزات',

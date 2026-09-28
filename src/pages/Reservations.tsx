@@ -29,7 +29,7 @@ import { formatDA, formatDate, formatDateLong, rangesOverlap, todayISO, addDaysI
 import { reservationPeriod, rentalPeriodOf } from '@/lib/lookups';
 import { useToday } from '@/lib/useToday';
 import { clientName, reservationRoomLabels, clientById } from '@/lib/lookups';
-import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVersementHTML, buildTerminationHTML, printHTML } from '@/lib/print';
+import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVersementHTML, buildTerminationHTML, printHTML, type TerminationLang } from '@/lib/print';
 import type { Reservation, Payment, TerminationParty } from '@/types';
 
 type PrintKind = 'contract' | 'versement' | 'termination';
@@ -77,6 +77,8 @@ export default function Reservations() {
   const [printChoice, setPrintChoice] = useState<Reservation | null>(null);
   const [terminateFor, setTerminateFor] = useState<Reservation | null>(null);
   const [printTermination, setPrintTermination] = useState<Reservation | null>(null);
+  // Termination letter: the user first picks French or Arabic.
+  const [termLangFor, setTermLangFor] = useState<Reservation | null>(null);
 
   // Live local date — auto-updates at midnight / on window focus so the
   // activation & closure buttons unlock without reloading the page.
@@ -150,9 +152,14 @@ export default function Reservations() {
   const askPrint = (r: Reservation) => setPrintChoice(r);
   const doPrint = (r: Reservation, kind: PrintKind) => {
     if (kind === 'contract') printHTML(`${r.code}-contrat`, buildRentalContractHTML(data, r, storeInfo));
-    else if (kind === 'termination') printHTML(`${r.code}-fsakh`, buildTerminationHTML(data, r, storeInfo));
+    else if (kind === 'termination') { setPrintChoice(null); setTermLangFor(r); return; }
     else printHTML(`${r.code}-versement`, buildVersementHTML(data, r, storeInfo));
     setPrintChoice(null);
+  };
+
+  const printTerminationIn = (r: Reservation, l: TerminationLang) => {
+    printHTML(`${r.code}-resiliation-${l}`, buildTerminationHTML(data, r, storeInfo, l));
+    setTermLangFor(null);
   };
 
   const handleActivate = async () => {
@@ -465,9 +472,14 @@ export default function Reservations() {
       <PrintPrompt
         open={!!printTermination}
         onClose={() => setPrintTermination(null)}
-        onConfirm={() => { if (printTermination) doPrint(printTermination, 'termination'); }}
+        onConfirm={() => { if (printTermination) setTermLangFor(printTermination); }}
         title={t('res.printTermination')}
         message={t('res.askPrintTermination')}
+      />
+      <TerminationLangModal
+        reservation={termLangFor}
+        onClose={() => setTermLangFor(null)}
+        onPick={(l) => { if (termLangFor) printTerminationIn(termLangFor, l); }}
       />
       <PrintChoiceModal
         reservation={printChoice}
@@ -1235,6 +1247,42 @@ function PaymentModal({ reservation, onClose }: { reservation: Reservation | nul
         message={t('sales.askPrintPayment')}
       />
     </>
+  );
+}
+
+function TerminationLangModal({
+  reservation, onClose, onPick,
+}: {
+  reservation: Reservation | null;
+  onClose: () => void;
+  onPick: (lang: TerminationLang) => void;
+}) {
+  const { t } = useI18n();
+  const options: { lang: TerminationLang; flag: string; title: string; desc: string }[] = [
+    { lang: 'fr', flag: 'FR', title: 'Français', desc: 'Résiliation de Contrat de Location' },
+    { lang: 'ar', flag: 'ع', title: 'العربية', desc: 'فسخ عقد إيجار' },
+  ];
+  return (
+    <Modal open={!!reservation} onClose={onClose} title={t('res.chooseLang')} subtitle={reservation?.code} size="sm">
+      <div className="space-y-3">
+        {options.map((o) => (
+          <button
+            key={o.lang}
+            onClick={() => onPick(o.lang)}
+            className="group flex w-full items-center gap-4 rounded-2xl border-2 border-slate-200 bg-white p-4 text-start transition-all hover:border-amber-400 hover:bg-amber-50 hover:shadow-sm active:scale-[0.99]"
+          >
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber-600 to-yellow-700 text-lg font-extrabold text-white shadow-md">
+              {o.flag}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-ink-primary">{o.title}</span>
+              <span className="block text-xs text-ink-muted mt-0.5" dir={o.lang === 'ar' ? 'rtl' : 'ltr'}>{o.desc}</span>
+            </span>
+            <Printer size={18} className="shrink-0 text-ink-muted" />
+          </button>
+        ))}
+      </div>
+    </Modal>
   );
 }
 
