@@ -43,6 +43,14 @@ const config = (dark?: boolean) => ({
     dotClasses: 'bg-slate-400',
     pulse: false,
   },
+  terminated: {
+    label: 'res.statusTerminated',
+    classes: dark
+      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+      : 'bg-rose-500/15 text-rose-700 border border-rose-400/30',
+    dotClasses: 'bg-rose-400',
+    pulse: false,
+  },
 });
 
 export function ResStatusBadge({ status, dark }: { status: ReservationStatus; dark?: boolean }) {

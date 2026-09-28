@@ -136,7 +136,10 @@ export interface Service {
 }
 
 // ============ RESERVATIONS ============
-export type ReservationStatus = 'paid' | 'debt' | 'active' | 'pending' | 'cancelled';
+export type ReservationStatus = 'paid' | 'debt' | 'active' | 'pending' | 'cancelled' | 'terminated';
+
+/** Who asked for the early termination (fsakh) of a rental contract. */
+export type TerminationParty = 'tenant' | 'owner';
 
 export interface ReservationRoom {
   roomId: string;
@@ -187,6 +190,15 @@ export interface Reservation {
   agencyFeeCommissionSettled?: boolean;
   /** The worker payment that settled this commission (history link). */
   agencyFeeCommissionPaymentId?: string;
+  // ── Fsakh / résiliation du contrat ───────────────────────────────────────
+  /** Day the contract was terminated — the apartment is free from that day. */
+  terminationDate?: string;
+  /** Reasons written on the termination letter. */
+  terminationReason?: string;
+  /** Who requested the termination (tenant or owner). */
+  terminatedBy?: TerminationParty;
+  /** "Fait à" — place where the termination letter was drawn up. */
+  terminationPlace?: string;
 }
 
 // ============ MEDIATORS ============

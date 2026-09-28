@@ -221,6 +221,10 @@ function dbToReservation(row: Record<string, unknown>): Reservation {
     agencyFeeCommission: (row.agency_fee_commission as number) || 0,
     agencyFeeCommissionSettled: row.agency_fee_commission_settled === true,
     agencyFeeCommissionPaymentId: (row.agency_fee_commission_payment_id as string) || undefined,
+    terminationDate: (row.termination_date as string) || undefined,
+    terminationReason: (row.termination_reason as string) || undefined,
+    terminatedBy: (row.terminated_by as Reservation['terminatedBy']) || undefined,
+    terminationPlace: (row.termination_place as string) || undefined,
   };
   return r;
 }
@@ -352,6 +356,8 @@ function dbToStoreInfo(row: Record<string, unknown>): StoreInfo {
 //   • debt     — terminated with a remaining balance (can still be paid off,
 //                which flips it back to paid).
 //   • cancelled — never changes automatically.
+//   • terminated — contract ended early (fsakh) by the tenant or the owner;
+//                the apartment is released from the termination date on.
 //
 // Payment changes must NEVER move a reservation between lifecycle stages —
 // e.g. a fully-paid FUTURE reservation stays `pending`, not `paid`.
@@ -457,6 +463,10 @@ interface AppState extends AppData, AuthState {
   // Reservations
   addReservation: (r: Omit<Reservation, 'id' | 'code' | 'createdAt'>) => Promise<void>;
   updateReservation: (id: string, patch: Partial<Reservation>) => Promise<void>;
+  terminateReservation: (
+    id: string,
+    info: { date: string; reason?: string; by: NonNullable<Reservation['terminatedBy']>; place?: string },
+  ) => Promise<boolean>;
   deleteReservation: (id: string) => Promise<void>;
   addPayment: (resId: string, amount: number, note?: string) => Promise<void>;
 
@@ -1245,6 +1255,48 @@ export const useApp = create<AppState>()((set, get) => ({
         return merged;
       }),
     }));
+  },
+
+  terminateReservation: async (id, info) => {
+    const current = get().reservations.find((r) => r.id === id);
+    if (!current) return false;
+    const { error } = await supabase
+      .from('reservations')
+      .update({
+        status: 'terminated',
+        termination_date: info.date,
+        termination_reason: info.reason || null,
+        terminated_by: info.by,
+        termination_place: info.place || null,
+      })
+      .eq('id', id);
+    if (error) return false;
+
+    // Release the apartment(s): a stored "occupied" flag goes back to available.
+    const roomIds = current.rooms.map((rr) => rr.roomId);
+    const toFree = get().rooms.filter((room) => roomIds.includes(room.id) && room.status === 'occupied');
+    if (toFree.length > 0) {
+      await supabase.from('rooms').update({ status: 'available' }).in('id', toFree.map((room) => room.id));
+    }
+
+    set((s) => ({
+      reservations: s.reservations.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              status: 'terminated',
+              terminationDate: info.date,
+              terminationReason: info.reason || undefined,
+              terminatedBy: info.by,
+              terminationPlace: info.place || undefined,
+            }
+          : r,
+      ),
+      rooms: s.rooms.map((room) =>
+        toFree.some((x) => x.id === room.id) ? { ...room, status: 'available' } : room,
+      ),
+    }));
+    return true;
   },
 
   deleteReservation: async (id) => {

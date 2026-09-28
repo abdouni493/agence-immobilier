@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS public.reservations (
   nights         integer NOT NULL DEFAULT 1,
   total          numeric NOT NULL DEFAULT 0,
   status         text NOT NULL DEFAULT 'pending'
-                   CHECK (status = ANY (ARRAY['paid'::text, 'debt'::text, 'active'::text, 'pending'::text, 'cancelled'::text])),
+                   CHECK (status = ANY (ARRAY['paid'::text, 'debt'::text, 'active'::text, 'pending'::text, 'cancelled'::text, 'terminated'::text])),
   notes          text,
   -- Frais d'agence facturés au client (compris dans `total`) et, en option,
   -- la part de ces frais reversée à un employé.
@@ -170,6 +170,11 @@ CREATE TABLE IF NOT EXISTS public.reservations (
   agency_fee_commission            numeric NOT NULL DEFAULT 0,
   agency_fee_commission_settled    boolean NOT NULL DEFAULT false,
   agency_fee_commission_payment_id uuid,
+  -- Résiliation (فسخ عقد إيجار) : l'appartement est libéré dès termination_date.
+  termination_date   date,
+  termination_reason text,
+  terminated_by      text CHECK (terminated_by IS NULL OR terminated_by = ANY (ARRAY['tenant'::text, 'owner'::text])),
+  termination_place  text,
   created_at     timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT reservations_pkey PRIMARY KEY (id),
   CONSTRAINT reservations_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE RESTRICT

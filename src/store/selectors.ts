@@ -169,6 +169,18 @@ export function mediatorOutInRange(mediators: Mediator[], from: string, to: stri
 }
 
 /** Live room status: maintenance flag wins, else occupied if an active reservation covers `today`. */
+/**
+ * Last (exclusive) day a reservation holds its apartment(s). A terminated
+ * contract (fsakh) releases them from its termination date, even when the
+ * original check-out was later.
+ */
+export function reservationEnd(r: Reservation): string {
+  if (r.status === 'terminated' && r.terminationDate && r.terminationDate < r.checkOut) {
+    return r.terminationDate < r.checkIn ? r.checkIn : r.terminationDate;
+  }
+  return r.checkOut;
+}
+
 export function effectiveRoomStatus(
   room: Room,
   reservations: Reservation[],
@@ -180,7 +192,7 @@ export function effectiveRoomStatus(
       r.status !== 'cancelled' &&
       r.rooms.some((rr) => rr.roomId === room.id) &&
       r.checkIn <= today &&
-      today < r.checkOut,
+      today < reservationEnd(r),
   );
   return occupied ? 'occupied' : 'available';
 }
@@ -197,7 +209,7 @@ export function isRoomAvailableForRange(
       r.id !== excludeReservationId &&
       r.status !== 'cancelled' &&
       r.rooms.some((rr) => rr.roomId === roomId) &&
-      rangesOverlap(checkIn, checkOut, r.checkIn, r.checkOut),
+      rangesOverlap(checkIn, checkOut, r.checkIn, reservationEnd(r)),
   );
 }
 
@@ -406,7 +418,7 @@ export function computeKpis(data: AppData, today: string): Kpis {
   const occupancy = bookable > 0 ? Math.round((occupied / bookable) * 100) : 0;
 
   const activeToday = data.reservations.filter(
-    (r) => r.status !== 'cancelled' && r.checkIn <= today && today < r.checkOut,
+    (r) => r.status !== 'cancelled' && r.checkIn <= today && today < reservationEnd(r),
   ).length;
 
   // Top service

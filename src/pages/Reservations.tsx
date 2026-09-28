@@ -4,7 +4,7 @@ import {
   CalendarCheck, Plus, CalendarRange, Eye, Pencil, Printer, CreditCard, User, Phone,
   Building2, CalendarDays, Wallet, Trash2, CheckCircle2, PlayCircle,
   Mail, MapPin, Clock, ShieldCheck, DollarSign, FileText, Hourglass,
-  FileSignature, Receipt, ChevronRight, Briefcase, HardHat,
+  FileSignature, Receipt, ChevronRight, Briefcase, HardHat, FileX, Ban,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -14,7 +14,7 @@ import { PageHeader, EmptyState, SearchInput, Stat } from '@/components/ui/Misc'
 import { GradientButton } from '@/components/ui/GradientButton';
 import { GradientCard } from '@/components/ui/GradientCard';
 import { Modal } from '@/components/ui/Modal';
-import { TextField, SegmentedControl } from '@/components/ui/Field';
+import { TextField, TextArea, SegmentedControl, FieldWrap } from '@/components/ui/Field';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
 import { ReservationWizard } from '@/components/reservations/ReservationWizard';
 import { CalendarTimeline } from '@/components/reservations/CalendarTimeline';
@@ -29,10 +29,10 @@ import { formatDA, formatDate, formatDateLong, rangesOverlap, todayISO, addDaysI
 import { reservationPeriod, rentalPeriodOf } from '@/lib/lookups';
 import { useToday } from '@/lib/useToday';
 import { clientName, reservationRoomLabels, clientById } from '@/lib/lookups';
-import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVersementHTML, printHTML } from '@/lib/print';
-import type { Reservation, Payment } from '@/types';
+import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVersementHTML, buildTerminationHTML, printHTML } from '@/lib/print';
+import type { Reservation, Payment, TerminationParty } from '@/types';
 
-type PrintKind = 'contract' | 'versement';
+type PrintKind = 'contract' | 'versement' | 'termination';
 
 /** Name of the employee holding the agency-fee commission of a location. */
 function workerName(data: ReturnType<typeof useAppData>, id?: string): string {
@@ -41,7 +41,7 @@ function workerName(data: ReturnType<typeof useAppData>, id?: string): string {
 }
 
 type Period = 'today' | 'week' | 'month' | 'all';
-type StatusFilter = 'all' | 'pending' | 'active' | 'paid' | 'debt' | 'cancelled';
+type StatusFilter = 'all' | 'pending' | 'active' | 'paid' | 'debt' | 'cancelled' | 'terminated';
 
 const statusBg: Record<string, string> = {
   pending: 'bg-gradient-to-br from-violet-50 to-purple-50 border-violet-200',
@@ -49,6 +49,7 @@ const statusBg: Record<string, string> = {
   paid: 'bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-200',
   debt: 'bg-gradient-to-br from-orange-50 to-amber-50 border-orange-200',
   cancelled: 'bg-gradient-to-br from-slate-50 to-gray-50 border-slate-200',
+  terminated: 'bg-gradient-to-br from-rose-50 to-red-50 border-rose-200',
 };
 
 export default function Reservations() {
@@ -74,6 +75,8 @@ export default function Reservations() {
   const [clotureFor, setClotureFor] = useState<Reservation | null>(null);
   const [activateFor, setActivateFor] = useState<Reservation | null>(null);
   const [printChoice, setPrintChoice] = useState<Reservation | null>(null);
+  const [terminateFor, setTerminateFor] = useState<Reservation | null>(null);
+  const [printTermination, setPrintTermination] = useState<Reservation | null>(null);
 
   // Live local date — auto-updates at midnight / on window focus so the
   // activation & closure buttons unlock without reloading the page.
@@ -147,6 +150,7 @@ export default function Reservations() {
   const askPrint = (r: Reservation) => setPrintChoice(r);
   const doPrint = (r: Reservation, kind: PrintKind) => {
     if (kind === 'contract') printHTML(`${r.code}-contrat`, buildRentalContractHTML(data, r, storeInfo));
+    else if (kind === 'termination') printHTML(`${r.code}-fsakh`, buildTerminationHTML(data, r, storeInfo));
     else printHTML(`${r.code}-versement`, buildVersementHTML(data, r, storeInfo));
     setPrintChoice(null);
   };
@@ -224,6 +228,7 @@ export default function Reservations() {
             { value: 'paid', label: t('res.filterPaid') },
             { value: 'debt', label: t('res.filterDebt') },
             { value: 'cancelled', label: t('res.filterCancelled') },
+            { value: 'terminated', label: t('res.filterTerminated') },
           ]}
         />
       </div>
@@ -296,6 +301,24 @@ export default function Reservations() {
                           </p>
                           <p className="mt-0.5 text-[11px] leading-snug text-ink-secondary">
                             {t('res.pendingCountdownDesc', { date: formatDate(r.checkIn, lang) })}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Terminated (fsakh) contract: when & by whom */}
+                    {r.status === 'terminated' && (
+                      <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-rose-400/30 bg-rose-500/15 p-2.5">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-rose-500 text-white mt-0.5">
+                          <Ban size={14} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold leading-tight text-rose-200">
+                            {t('res.terminatedOn', { date: formatDate(r.terminationDate ?? r.checkOut, lang) })}
+                          </p>
+                          <p className="mt-0.5 text-[11px] leading-snug text-ink-secondary">
+                            {t('res.terminateBy')} : {r.terminatedBy === 'owner' ? t('res.terminateByOwner') : t('res.terminateByTenant')}
+                            {r.terminationReason ? ` · ${r.terminationReason}` : ''}
                           </p>
                         </div>
                       </div>
@@ -390,6 +413,16 @@ export default function Reservations() {
                           <CheckCircle2 size={15} />
                         </button>
                       )}
+                      {/* "Résilier" (fsakh) — ends an active contract early and frees the apartment */}
+                      {r.status === 'active' && can(perms, 'reservations', 'edit') && (
+                        <button
+                          onClick={() => setTerminateFor(r)}
+                          className="btn-card-action btn-action-delete"
+                          title={t('res.terminate')}
+                        >
+                          <FileX size={15} />
+                        </button>
+                      )}
                       {/* "Activer" for pending reservations — locked until check-in date */}
                       {r.status === 'pending' && can(perms, 'reservations', 'edit') && (
                         <button
@@ -424,6 +457,18 @@ export default function Reservations() {
       <DetailModal reservation={detail} onClose={() => setDetail(null)} onPrint={askPrint} onPay={(r) => { setDetail(null); setPayFor(r); }} data={data} lang={lang} />
       <PaymentModal reservation={payFor} onClose={() => setPayFor(null)} />
       <ClotureModal reservation={clotureFor} onClose={() => setClotureFor(null)} />
+      <TerminateModal
+        reservation={terminateFor}
+        onClose={() => setTerminateFor(null)}
+        onDone={(r) => { setTerminateFor(null); setPrintTermination(r); }}
+      />
+      <PrintPrompt
+        open={!!printTermination}
+        onClose={() => setPrintTermination(null)}
+        onConfirm={() => { if (printTermination) doPrint(printTermination, 'termination'); }}
+        title={t('res.printTermination')}
+        message={t('res.askPrintTermination')}
+      />
       <PrintChoiceModal
         reservation={printChoice}
         onClose={() => setPrintChoice(null)}
@@ -639,6 +684,106 @@ function ClotureModal({ reservation, onClose }: { reservation: Reservation | nul
               placeholder={String(totalDue)}
             />
           )}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function TerminateModal({
+  reservation, onClose, onDone,
+}: {
+  reservation: Reservation | null;
+  onClose: () => void;
+  onDone: (r: Reservation) => void;
+}) {
+  const { t, lang } = useI18n();
+  const toast = useToast();
+  const data = useAppData();
+  const storeInfo = useApp((s) => s.storeInfo);
+  const terminateReservation = useApp((s) => s.terminateReservation);
+  const [by, setBy] = useState<TerminationParty>('tenant');
+  const [date, setDate] = useState(todayISO());
+  const [place, setPlace] = useState('');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const r = reservation;
+
+  useEffect(() => {
+    if (reservation) {
+      setBy('tenant');
+      setDate(todayISO());
+      // "Fait à" defaults to the agency's town (last part of its address).
+      setPlace((storeInfo.address ?? '').split(',').pop()?.trim() ?? '');
+      setReason('');
+    }
+  }, [reservation?.id]);
+
+  const handleConfirm = async () => {
+    if (!r || !date) return;
+    setSaving(true);
+    const ok = await terminateReservation(r.id, { date, reason: reason.trim(), by, place: place.trim() });
+    setSaving(false);
+    if (!ok) {
+      toast.error(t('res.terminateFailed'));
+      return;
+    }
+    toast.success(t('res.terminateDone'));
+    onDone(useApp.getState().reservations.find((x) => x.id === r.id) ?? r);
+  };
+
+  return (
+    <Modal
+      open={!!reservation}
+      onClose={onClose}
+      title={t('res.terminateTitle')}
+      subtitle={r?.code}
+      size="md"
+      footer={
+        <div className="flex gap-3 justify-end">
+          <GradientButton variant="glass" onClick={onClose}>{t('common.cancel')}</GradientButton>
+          <GradientButton variant="danger" icon={<FileX size={16} />} onClick={handleConfirm} disabled={saving || !date}>
+            {t('res.terminateConfirm')}
+          </GradientButton>
+        </div>
+      }
+    >
+      {r && (
+        <div className="space-y-4">
+          <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700">
+            {t('res.terminateDesc')}
+          </div>
+          <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-secondary">Client</span>
+              <span className="font-semibold">{clientName(data, r.clientId)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-secondary">Appartement(s)</span>
+              <span className="font-semibold">{reservationRoomLabels(data, r)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-secondary">Dates</span>
+              <span className="font-semibold">{formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)}</span>
+            </div>
+          </div>
+          <FieldWrap label={t('res.terminateBy')}>
+            <SegmentedControl<TerminationParty>
+              value={by}
+              onChange={setBy}
+              size="sm"
+              options={[
+                { value: 'tenant', label: t('res.terminateByTenant') },
+                { value: 'owner', label: t('res.terminateByOwner') },
+              ]}
+            />
+          </FieldWrap>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <TextField label={t('res.terminateDate')} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <TextField label={t('res.terminatePlace')} value={place} onChange={(e) => setPlace(e.target.value)} />
+          </div>
+          <TextArea label={t('res.terminateReason')} rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
         </div>
       )}
     </Modal>
@@ -889,6 +1034,32 @@ function DetailModal({
             </div>
           )}
 
+          {/* Termination (fsakh) details */}
+          {r.status === 'terminated' && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-5 shadow-sm space-y-2">
+              <h4 className="text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-rose-200 pb-3">
+                <FileX size={14} /> {t('res.terminateTitle')}
+              </h4>
+              <div className="flex justify-between text-sm">
+                <span className="text-ink-secondary">{t('res.terminateDate')}</span>
+                <span className="font-semibold">{formatDate(r.terminationDate ?? r.checkOut, lang)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-ink-secondary">{t('res.terminateBy')}</span>
+                <span className="font-semibold">{r.terminatedBy === 'owner' ? t('res.terminateByOwner') : t('res.terminateByTenant')}</span>
+              </div>
+              {r.terminationPlace && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-ink-secondary">{t('res.terminatePlace')}</span>
+                  <span className="font-semibold">{r.terminationPlace}</span>
+                </div>
+              )}
+              {r.terminationReason && (
+                <p className="text-sm text-ink-primary whitespace-pre-wrap pt-1">{r.terminationReason}</p>
+              )}
+            </div>
+          )}
+
           {/* Notes / remarque */}
           {r.notes && (
             <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-2">
@@ -1079,6 +1250,9 @@ function PrintChoiceModal({
     { kind: 'contract', icon: <FileSignature size={22} />, title: t('res.printContract'), desc: t('res.printContractDesc'), tone: 'from-sky-500 to-blue-600' },
     { kind: 'versement', icon: <Receipt size={22} />, title: t('res.printVersement'), desc: t('res.printVersementDesc'), tone: 'from-emerald-500 to-teal-600' },
   ];
+  if (reservation?.status === 'terminated') {
+    options.push({ kind: 'termination', icon: <FileX size={22} />, title: t('res.printTermination'), desc: t('res.printTerminationDesc'), tone: 'from-amber-600 to-yellow-700' });
+  }
   return (
     <Modal open={!!reservation} onClose={onClose} title={t('res.printChoiceTitle')} subtitle={reservation?.code} size="sm">
       <div className="space-y-3">

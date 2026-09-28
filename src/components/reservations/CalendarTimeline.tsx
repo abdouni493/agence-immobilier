@@ -10,7 +10,7 @@ import { useI18n } from '@/i18n';
 import { cn, todayISO, formatDA, formatDate } from '@/lib/utils';
 import { categoryName, clientName, clientById, activeRooms } from '@/lib/lookups';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
-import { reservationRemaining } from '@/store/selectors';
+import { reservationRemaining, reservationEnd } from '@/store/selectors';
 import type { Reservation, ReservationStatus } from '@/types';
 
 const CELL = 40;
@@ -23,6 +23,7 @@ const STATUS_STYLES: Record<ReservationStatus, { bar: string; dot: string; ring:
   paid:      { bar: 'from-emerald-500 to-teal-500',    dot: 'from-emerald-500 to-teal-500',    ring: 'shadow-emerald-500/30' },
   debt:      { bar: 'from-amber-500 to-orange-500',    dot: 'from-amber-500 to-orange-500',    ring: 'shadow-amber-500/30' },
   cancelled: { bar: 'from-slate-400 to-slate-500',     dot: 'from-slate-400 to-slate-500',     ring: 'shadow-slate-500/20' },
+  terminated: { bar: 'from-rose-500 to-red-600',       dot: 'from-rose-500 to-red-600',       ring: 'shadow-rose-500/30' },
 };
 
 const FILTER_CHIP: Record<'all' | ReservationStatus, string> = {
@@ -32,6 +33,7 @@ const FILTER_CHIP: Record<'all' | ReservationStatus, string> = {
   paid:      'from-emerald-500 to-teal-500',
   debt:      'from-amber-500 to-orange-500',
   cancelled: 'from-slate-400 to-slate-500',
+  terminated: 'from-rose-500 to-red-600',
 };
 
 export function CalendarTimeline({
@@ -100,13 +102,13 @@ export function CalendarTimeline({
     const activeRes = data.reservations.filter(
       (r) => r.status !== 'cancelled' && (statusFilter === 'all' || r.status === statusFilter),
     );
-    const monthRes = activeRes.filter((r) => r.checkIn <= monthEnd && r.checkOut > monthStart);
+    const monthRes = activeRes.filter((r) => r.checkIn <= monthEnd && reservationEnd(r) > monthStart);
 
     // Occupancy = reserved room-day cells / total room-days in month.
     let occupied = 0;
     for (const room of liveRooms) {
       for (const d of days) {
-        if (monthRes.some((r) => r.rooms.some((rr) => rr.roomId === room.id) && r.checkIn <= d.iso && r.checkOut > d.iso)) {
+        if (monthRes.some((r) => r.rooms.some((rr) => rr.roomId === room.id) && r.checkIn <= d.iso && reservationEnd(r) > d.iso)) {
           occupied++;
         }
       }
@@ -117,7 +119,7 @@ export function CalendarTimeline({
     // Rooms free right now (today).
     const busyToday = new Set<string>();
     for (const r of data.reservations) {
-      if (r.status !== 'cancelled' && r.checkIn <= today && r.checkOut > today) {
+      if (r.status !== 'cancelled' && r.checkIn <= today && reservationEnd(r) > today) {
         r.rooms.forEach((rr) => busyToday.add(rr.roomId));
       }
     }
@@ -234,7 +236,7 @@ export function CalendarTimeline({
           <div className="flex flex-wrap items-center justify-between gap-4">
             {/* Status Filters */}
             <div className="flex gap-1.5 flex-wrap">
-              {(['all', 'pending', 'active', 'paid', 'debt'] as const).map((s) => (
+              {(['all', 'pending', 'active', 'paid', 'debt', 'terminated'] as const).map((s) => (
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}
@@ -329,7 +331,7 @@ export function CalendarTimeline({
                       if (r.status === 'cancelled') return false;
                       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
                       if (!r.rooms.some((rr) => rr.roomId === room.id)) return false;
-                      return r.checkIn <= monthEnd && r.checkOut > monthStart;
+                      return r.checkIn <= monthEnd && reservationEnd(r) > monthStart;
                     });
 
                     return (
@@ -381,7 +383,7 @@ export function CalendarTimeline({
                           <AnimatePresence>
                             {roomRes.map((r) => {
                               const startDay = Math.max(0, dayIndexOf(r.checkIn));
-                              const endDay = Math.min(daysInMonth, dayIndexOf(r.checkOut));
+                              const endDay = Math.min(daysInMonth, dayIndexOf(reservationEnd(r)));
                               const width = Math.max(1, endDay - startDay) * CELL - 4;
                               const style = STATUS_STYLES[r.status];
 
@@ -454,7 +456,7 @@ export function CalendarTimeline({
                     return r.rooms.some((rr) => rr.roomId === selectedRoomId);
                   });
 
-                  const activeRes = roomRes.find((r) => cell.iso && r.checkIn <= cell.iso && r.checkOut > cell.iso);
+                  const activeRes = roomRes.find((r) => cell.iso && r.checkIn <= cell.iso && reservationEnd(r) > cell.iso);
                   const isToday = cell.iso === today;
 
                   return (
@@ -510,6 +512,7 @@ export function CalendarTimeline({
               <Legend colorClass="bg-gradient-to-r from-emerald-500 to-teal-500" label={t('res.statusPaid')} />
               <Legend colorClass="bg-gradient-to-r from-amber-500 to-orange-500" label={t('res.statusDebt')} />
               <Legend colorClass="bg-gradient-to-r from-slate-400 to-slate-500" label={t('res.statusCancelled')} />
+              <Legend colorClass="bg-gradient-to-r from-rose-500 to-red-600" label={t('res.statusTerminated')} />
               <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-secondary">
                 <span className="h-3.5 w-6 rounded border border-slate-200" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b, #f59e0b 4px, transparent 4px, transparent 8px)', opacity: 0.55 }} />
                 {t('rooms.maintenance')}

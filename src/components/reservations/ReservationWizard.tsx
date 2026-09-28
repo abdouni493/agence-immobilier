@@ -13,7 +13,7 @@ import { GradientButton } from '@/components/ui/GradientButton';
 import { TextField } from '@/components/ui/Field';
 import { ClientForm } from '@/components/forms/ClientForm';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
-import { reservationPaid } from '@/store/selectors';
+import { reservationPaid, reservationEnd } from '@/store/selectors';
 import { cn, formatDA, nightsBetween, monthsBetween, addMonthsISO, todayISO, initials } from '@/lib/utils';
 import { rentalPeriodOf, activeRooms } from '@/lib/lookups';
 import type { Reservation, ReservationService, ReservationStatus } from '@/types';
@@ -59,7 +59,7 @@ function ApartmentCalendar({
     r => r.id !== editingId && r.status !== 'cancelled' && r.rooms.some(rr => rr.roomId === roomId),
   );
 
-  const dayOccupants = (iso: string) => occupiedRes.filter(r => r.checkIn <= iso && r.checkOut > iso);
+  const dayOccupants = (iso: string) => occupiedRes.filter(r => r.checkIn <= iso && reservationEnd(r) > iso);
 
   const isInRange = (iso: string) => {
     if (!checkIn) return false;
@@ -80,7 +80,7 @@ function ApartmentCalendar({
     const today = todayISO();
     if (iso < today) return true;
     
-    const occupied = occupiedRes.some(r => r.checkIn <= iso && r.checkOut > iso);
+    const occupied = occupiedRes.some(r => r.checkIn <= iso && reservationEnd(r) > iso);
     
     if (selecting === 'in') {
       return occupied;
@@ -112,7 +112,7 @@ function ApartmentCalendar({
     new Date(2024, 0, i + 1).toLocaleDateString(lang === 'ar' ? 'ar-DZ' : 'fr-FR', { weekday: 'narrow' }),
   );
 
-  const hasConflict = checkIn && checkOut && occupiedRes.some(r => rangesOverlap(checkIn, checkOut, r.checkIn, r.checkOut));
+  const hasConflict = checkIn && checkOut && occupiedRes.some(r => rangesOverlap(checkIn, checkOut, r.checkIn, reservationEnd(r)));
 
   return (
     <div className="space-y-3">
@@ -287,7 +287,7 @@ export function ReservationWizard({
     const busy = new Set<string>();
     for (const r of data.reservations) {
       if (r.id === editing?.id || r.status === 'cancelled') continue;
-      if (r.checkOut > today) r.rooms.forEach((rr) => busy.add(rr.roomId));
+      if (reservationEnd(r) > today) r.rooms.forEach((rr) => busy.add(rr.roomId));
     }
     return busy;
   }, [data.reservations, editing]);
@@ -390,7 +390,7 @@ export function ReservationWizard({
       const occupiedRes = data.reservations.filter(
         r => r.id !== editing?.id && r.status !== 'cancelled' && r.rooms.some(rr => rr.roomId === roomId)
       );
-      return occupiedRes.some(r => rangesOverlap(checkIn, checkOut, r.checkIn, r.checkOut));
+      return occupiedRes.some(r => rangesOverlap(checkIn, checkOut, r.checkIn, reservationEnd(r)));
     });
   }, [checkIn, checkOut, roomIds, data.reservations, editing, data.rooms]);
 

@@ -26,6 +26,8 @@ import { uploadApartmentPhoto, deleteApartmentPhoto, formatBytes } from '@/lib/s
 import type { Room, RoomStatus, PropertyType, RentalPeriod, DocumentType } from '@/types';
 
 type StatusFilter = 'all' | RoomStatus | 'rental' | 'sale';
+/** Availability view: only free apartments (default), only busy ones, or all. */
+type AvailabilityFilter = 'available' | 'unavailable' | 'all';
 type PeriodFilter = 'all' | RentalPeriod;
 type FurnishFilter = 'all' | 'furnished' | 'unfurnished';
 
@@ -49,6 +51,7 @@ export default function Chambres() {
   const deleteCategory = useApp((s) => s.deleteCategory);
 
   const today = todayISO();
+  const [availability, setAvailability] = useState<AvailabilityFilter>('available');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [furnishFilter, setFurnishFilter] = useState<FurnishFilter>('all');
@@ -69,8 +72,11 @@ export default function Chambres() {
     () => liveRooms.map((r) => ({ room: r, status: effectiveRoomStatus(r, data.reservations, today) })),
     [liveRooms, data.reservations, today],
   );
+  const availableCount = useMemo(() => withStatus.filter((x) => x.status === 'available').length, [withStatus]);
   const filtered = useMemo(() => {
     let list = withStatus;
+    if (availability === 'available') list = list.filter((x) => x.status === 'available');
+    else if (availability === 'unavailable') list = list.filter((x) => x.status !== 'available');
     if (filter === 'rental' || filter === 'sale') {
       list = list.filter((x) => (x.room.propertyType ?? 'rental') === filter);
     } else if (filter !== 'all') {
@@ -86,7 +92,7 @@ export default function Chambres() {
       list = list.filter((x) => !!x.room.furnished === (furnishFilter === 'furnished'));
     }
     return list;
-  }, [withStatus, filter, periodFilter, furnishFilter]);
+  }, [withStatus, availability, filter, periodFilter, furnishFilter]);
 
   return (
     <div>
@@ -116,15 +122,31 @@ export default function Chambres() {
 
       <div className="mb-5 space-y-3">
         <div className="flex flex-wrap gap-3">
+          <SegmentedControl<AvailabilityFilter>
+            value={availability}
+            onChange={(v) => {
+              setAvailability(v);
+              // Occupied / maintenance only make sense outside the "disponibles" view.
+              if (v === 'available' && (filter === 'occupied' || filter === 'maintenance')) setFilter('all');
+            }}
+            options={[
+              { value: 'available', label: `${t('rooms.showAvailable')} (${availableCount})` },
+              { value: 'unavailable', label: `${t('rooms.showUnavailable')} (${withStatus.length - availableCount})` },
+              { value: 'all', label: `${t('rooms.showAll')} (${withStatus.length})` },
+            ]}
+          />
           <SegmentedControl<StatusFilter>
             value={filter}
             onChange={setFilter}
             size="sm"
             options={[
               { value: 'all', label: t('common.all') },
-              { value: 'available', label: t('rooms.available') },
-              { value: 'occupied', label: t('rooms.occupied') },
-              { value: 'maintenance', label: t('rooms.maintenance') },
+              ...(availability === 'available'
+                ? []
+                : [
+                    { value: 'occupied' as StatusFilter, label: t('rooms.occupied') },
+                    { value: 'maintenance' as StatusFilter, label: t('rooms.maintenance') },
+                  ]),
               { value: 'rental', label: t('apt.typeRental') },
               { value: 'sale', label: t('apt.typeSale') },
             ]}
