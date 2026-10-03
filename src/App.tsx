@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ReactNode, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useApp, useCurrentPermissions, canAccess, fetchWorkerPermissions } from '@/store/appStore';
 import { supabase } from '@/lib/supabase';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -46,7 +46,7 @@ const preload = () => {
 function PageShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   return (
-    <motion.div variants={pageTransition} initial="initial" animate="animate" exit="exit">
+    <motion.div variants={pageTransition} initial="initial" animate="animate">
       {/* key on Suspense forces remount on route change, preventing stale content flashes */}
       <Suspense key={location.pathname} fallback={<PageSkeleton />}>
         {children}
@@ -64,8 +64,10 @@ function RequireModule({ module, children }: { module: ModuleKey; children: Reac
 function AppRoutes() {
   const location = useLocation();
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
+    // No exit animation / AnimatePresence "wait": rapid clicks in the sidebar
+    // could interrupt the exit and leave a blank page until refresh.
+    <ErrorBoundary key={location.pathname}>
+      <Routes location={location}>
         <Route path="dashboard" element={<PageShell><Dashboard /></PageShell>} />
         <Route
           path="reservations"
@@ -122,7 +124,7 @@ function AppRoutes() {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
       </Routes>
-    </AnimatePresence>
+    </ErrorBoundary>
   );
 }
 
@@ -209,9 +211,7 @@ export default function App() {
           element={
             user ? (
               <AppLayout>
-                <ErrorBoundary>
-                  <AppRoutes />
-                </ErrorBoundary>
+                <AppRoutes />
               </AppLayout>
             ) : (
               <Navigate to="/login" replace />
