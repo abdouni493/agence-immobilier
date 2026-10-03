@@ -142,6 +142,9 @@ function dbToSale(row: Record<string, unknown>): Sale {
     commissionType: (row.commission_type as Sale['commissionType']) || 'amount',
     commissionPercent: row.commission_percent != null ? (row.commission_percent as number) : undefined,
     mediatorCommission: (row.mediator_commission as number) || 0,
+    agencyFeeType: (row.agency_fee_type as Sale['agencyFeeType']) || undefined,
+    agencyFeePercent: row.agency_fee_percent != null ? (row.agency_fee_percent as number) : undefined,
+    agencyFee: row.agency_fee != null ? (row.agency_fee as number) : undefined,
     price: row.price as number,
     date: row.date as string,
     time: (row.time as string) || '10:00',
@@ -1832,6 +1835,9 @@ export const useApp = create<AppState>()((set, get) => ({
         commission_type: sale.commissionType,
         commission_percent: sale.commissionPercent ?? null,
         mediator_commission: sale.mediatorCommission,
+        agency_fee_type: sale.agencyFeeType ?? null,
+        agency_fee_percent: sale.agencyFeePercent ?? null,
+        agency_fee: sale.agencyFee ?? null,
         price: sale.price,
         date: sale.date,
         time: sale.time,
@@ -1877,6 +1883,9 @@ export const useApp = create<AppState>()((set, get) => ({
     if (patch.commissionType !== undefined) dbPatch.commission_type = patch.commissionType;
     if (patch.commissionPercent !== undefined) dbPatch.commission_percent = patch.commissionPercent ?? null;
     if (patch.mediatorCommission !== undefined) dbPatch.mediator_commission = patch.mediatorCommission;
+    if (patch.agencyFeeType !== undefined) dbPatch.agency_fee_type = patch.agencyFeeType ?? null;
+    if ('agencyFeePercent' in patch) dbPatch.agency_fee_percent = patch.agencyFeePercent ?? null;
+    if (patch.agencyFee !== undefined) dbPatch.agency_fee = patch.agencyFee ?? null;
     if (patch.price !== undefined) dbPatch.price = patch.price;
     if (patch.date !== undefined) dbPatch.date = patch.date;
     if (patch.time !== undefined) dbPatch.time = patch.time;

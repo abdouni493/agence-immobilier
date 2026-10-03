@@ -237,6 +237,10 @@ export interface Sale {
   commissionType: CommissionType;
   commissionPercent?: number; // si commissionType === 'percent'
   mediatorCommission: number; // montant final en DA
+  /** Part de l'agence sur le prix de vente : pourcentage ou montant fixe. */
+  agencyFeeType?: CommissionType;
+  agencyFeePercent?: number; // si agencyFeeType === 'percent'
+  agencyFee?: number; // part agence finale en DA
   price: number; // prix de vente
   date: string; // ISO date
   time: string; // HH:MM

@@ -81,6 +81,15 @@ export function SaleWizard({
     editing?.commissionPercent != null ? String(editing.commissionPercent) : '',
   );
 
+  // Agency share (part agence) on the sale price
+  const [agencyFeeType, setAgencyFeeType] = useState<CommissionType>(editing?.agencyFeeType ?? 'percent');
+  const [agencyFeeAmount, setAgencyFeeAmount] = useState(
+    editing && editing.agencyFeeType === 'amount' && editing.agencyFee != null ? String(editing.agencyFee) : '',
+  );
+  const [agencyFeePercent, setAgencyFeePercent] = useState(
+    editing?.agencyFeePercent != null ? String(editing.agencyFeePercent) : '',
+  );
+
   // Recap
   const [price, setPrice] = useState(editing ? String(editing.price) : '');
   const [saleDate, setSaleDate] = useState(editing?.date ?? todayISO());
@@ -101,6 +110,19 @@ export function SaleWizard({
     }
     return commissionAmount === '' ? 0 : Number(commissionAmount);
   }, [useMediator, mediatorId, commissionType, commissionPercent, commissionAmount, priceNum]);
+
+  const agencyFeeValue = useMemo(() => {
+    if (agencyFeeType === 'percent') {
+      const pct = agencyFeePercent === '' ? 0 : Number(agencyFeePercent);
+      return Math.round((priceNum * pct) / 100);
+    }
+    return agencyFeeAmount === '' ? 0 : Number(agencyFeeAmount);
+  }, [agencyFeeType, agencyFeePercent, agencyFeeAmount, priceNum]);
+  const agencyFields = {
+    agencyFeeType,
+    agencyFeePercent: agencyFeeType === 'percent' && agencyFeePercent !== '' ? Number(agencyFeePercent) : undefined,
+    agencyFee: agencyFeeValue,
+  };
 
   const alreadyPaid = editing ? salePaid(editing) : 0;
   const paidNum = amountPaid === '' ? (editing ? alreadyPaid : priceNum) : Number(amountPaid);
@@ -191,6 +213,7 @@ export function SaleWizard({
 
   const handleSubmit = async () => {
     if (!roomId || !clientId || priceNum <= 0) return toast.error(t('login.required'));
+    if (agencyFeeValue < 0 || agencyFeeValue > priceNum) return toast.error(t('sales.agencyFeeInvalid'));
     const today = todayISO();
 
     if (editing) {
@@ -200,6 +223,7 @@ export function SaleWizard({
         commissionType,
         commissionPercent: commissionType === 'percent' && commissionPercent !== '' ? Number(commissionPercent) : undefined,
         mediatorCommission: commissionValue,
+        ...agencyFields,
         price: priceNum, date: saleDate, time: saleTime,
         notes: notes.trim() || undefined,
       };
@@ -223,6 +247,7 @@ export function SaleWizard({
         commissionType,
         commissionPercent: commissionType === 'percent' && commissionPercent !== '' ? Number(commissionPercent) : undefined,
         mediatorCommission: commissionValue,
+        ...agencyFields,
         price: priceNum, date: saleDate, time: saleTime,
         payments,
         status: 'debt',
@@ -618,6 +643,33 @@ export function SaleWizard({
                             <div className="flex justify-between font-extrabold text-brand-700 border-t border-brand-100 pt-3">
                               <span className="text-sm">Prix de vente</span>
                               <span className="text-xl">{formatDA(priceNum)}</span>
+                            </div>
+                            {/* Agency share */}
+                            <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4 space-y-3">
+                              <p className="text-sm font-bold text-ink-primary">{t('sales.agencyFee')}</p>
+                              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5">
+                                <button type="button" onClick={() => setAgencyFeeType('percent')}
+                                  className={cn('flex-1 h-10 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5', agencyFeeType === 'percent' ? 'bg-brand-50 shadow text-brand-700' : 'text-ink-secondary')}>
+                                  <Percent size={15} /> {t('sales.agencyFeePercent')}
+                                </button>
+                                <button type="button" onClick={() => setAgencyFeeType('amount')}
+                                  className={cn('flex-1 h-10 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5', agencyFeeType === 'amount' ? 'bg-brand-50 shadow text-brand-700' : 'text-ink-secondary')}>
+                                  <Coins size={15} /> {t('sales.agencyFeeAmount')}
+                                </button>
+                              </div>
+                              {agencyFeeType === 'percent' ? (
+                                <TextField label={`${t('sales.agencyFeePercent')} (%)`} type="number" value={agencyFeePercent} onChange={(e) => setAgencyFeePercent(e.target.value)} />
+                              ) : (
+                                <TextField label={`${t('sales.agencyFeeAmount')} (DA)`} type="number" value={agencyFeeAmount} onChange={(e) => setAgencyFeeAmount(e.target.value)} />
+                              )}
+                              <div className="flex items-center justify-between rounded-xl bg-white border border-brand-200 px-4 py-3">
+                                <span className="text-sm font-semibold text-ink-secondary">{t('sales.agencyFeeValue')}</span>
+                                <span className={cn('text-lg font-extrabold', agencyFeeValue > priceNum ? 'text-rose-600' : 'text-brand-700')}>{formatDA(agencyFeeValue)}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs text-ink-muted px-1">
+                                <span>{t('sales.ownerPart')}</span>
+                                <span className="font-semibold">{formatDA(Math.max(0, priceNum - agencyFeeValue))}</span>
+                              </div>
                             </div>
                             <div>
                               <label className="text-xs font-bold text-ink-muted block mb-1.5">{t('res.amountPaid')} (DA)</label>

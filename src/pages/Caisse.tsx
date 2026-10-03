@@ -14,7 +14,7 @@ import { SectionCard } from '@/components/ui/GradientCard';
 import { Modal } from '@/components/ui/Modal';
 import { TextField, RadioGroup, SegmentedControl } from '@/components/ui/Field';
 import { AnimatedNumber } from '@/components/ui/AnimatedCounter';
-import { caisseRecap, caisseBalance, agencyPaymentShares } from '@/store/selectors';
+import { caisseRecap, caisseBalance, agencyPaymentShares, saleAgencyPaymentShares } from '@/store/selectors';
 import { formatDA, formatDate, todayISO, addDaysISO, monthKey, cn } from '@/lib/utils';
 import { clientName, reservationRoomLabels, roomName, mediatorName } from '@/lib/lookups';
 import type { CashType } from '@/types';
@@ -64,9 +64,11 @@ export default function Caisse() {
       }
     }
     for (const s of data.sales) {
+      const shares = saleAgencyPaymentShares(s);
       for (const p of s.payments) {
-        if (p.date >= from && p.date <= to) {
-          items.push({ id: p.id, label: clientName(data, s.clientId), sub: `${s.code} · ${roomName(data, s.roomId)}`, amount: p.amount, date: p.date, kind: 'sale' });
+        const part = shares.get(p.id) ?? 0;
+        if (part > 0 && p.date >= from && p.date <= to) {
+          items.push({ id: p.id, label: clientName(data, s.clientId), sub: `${s.code} · ${roomName(data, s.roomId)}`, amount: part, date: p.date, kind: 'sale' });
         }
       }
     }

@@ -136,6 +136,34 @@ export function mediatorStats(m: Mediator, sales: Sale[]): MediatorStats {
 }
 
 /** Sum of sale payments whose payment date falls inside [from,to]. */
+/**
+ * Agency share (part agence) of each sale payment. Like rentals, the agency
+ * part is considered collected first; the rest goes to the owner.
+ */
+export function saleAgencyPaymentShares(s: Sale): Map<string, number> {
+  const shares = new Map<string, number>();
+  let left = Math.max(0, s.agencyFee ?? 0);
+  const sorted = [...s.payments].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  for (const p of sorted) {
+    const part = Math.min(left, Math.max(0, p.amount));
+    left -= part;
+    shares.set(p.id, part);
+  }
+  return shares;
+}
+
+/** Agency part of sale payments received inside [from,to]. */
+export function saleAgencyIncomeInRange(sales: Sale[], from: string, to: string): number {
+  let total = 0;
+  for (const s of sales) {
+    const shares = saleAgencyPaymentShares(s);
+    for (const p of s.payments) {
+      if (p.date >= from && p.date <= to) total += shares.get(p.id) ?? 0;
+    }
+  }
+  return total;
+}
+
 export function saleIncomeInRange(sales: Sale[], from: string, to: string): number {
   let total = 0;
   for (const s of sales) {
@@ -305,7 +333,7 @@ export interface CaisseRecap {
 
 export function caisseRecap(data: AppData, from: string, to: string): CaisseRecap {
   const reservationIncome = agencyIncomeInRange(data.reservations, from, to);
-  const saleIncome = saleIncomeInRange(data.sales, from, to);
+  const saleIncome = saleAgencyIncomeInRange(data.sales, from, to);
 
   // purchases: money out to sellers, broken down per purchase code
   const purchaseMap = new Map<string, number>();
