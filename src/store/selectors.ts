@@ -253,6 +253,36 @@ export function reservationIncomeInRange(
   return total;
 }
 
+/**
+ * Agency share (frais d'agence) of each reservation payment. The agency fee is
+ * considered collected first, so a payment counts for the agency only up to
+ * what remains of the fee; the rest belongs to the owner.
+ */
+export function agencyPaymentShares(r: Reservation): Map<string, number> {
+  const shares = new Map<string, number>();
+  let left = Math.max(0, r.agencyFee ?? 0);
+  const sorted = [...r.payments].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  for (const p of sorted) {
+    const part = Math.min(left, Math.max(0, p.amount));
+    left -= part;
+    shares.set(p.id, part);
+  }
+  return shares;
+}
+
+/** Agency-fee part of reservation payments received inside [from,to]. */
+export function agencyIncomeInRange(reservations: Reservation[], from: string, to: string): number {
+  let total = 0;
+  for (const r of reservations) {
+    if (r.status === 'cancelled') continue;
+    const shares = agencyPaymentShares(r);
+    for (const p of r.payments) {
+      if (inRange(p.date, from, to)) total += shares.get(p.id) ?? 0;
+    }
+  }
+  return total;
+}
+
 export interface CaisseRecap {
   reservationIncome: number;
   saleIncome: number;
@@ -274,7 +304,7 @@ export interface CaisseRecap {
 }
 
 export function caisseRecap(data: AppData, from: string, to: string): CaisseRecap {
-  const reservationIncome = reservationIncomeInRange(data.reservations, from, to);
+  const reservationIncome = agencyIncomeInRange(data.reservations, from, to);
   const saleIncome = saleIncomeInRange(data.sales, from, to);
 
   // purchases: money out to sellers, broken down per purchase code

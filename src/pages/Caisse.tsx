@@ -14,7 +14,7 @@ import { SectionCard } from '@/components/ui/GradientCard';
 import { Modal } from '@/components/ui/Modal';
 import { TextField, RadioGroup, SegmentedControl } from '@/components/ui/Field';
 import { AnimatedNumber } from '@/components/ui/AnimatedCounter';
-import { caisseRecap, caisseBalance } from '@/store/selectors';
+import { caisseRecap, caisseBalance, agencyPaymentShares } from '@/store/selectors';
 import { formatDA, formatDate, todayISO, addDaysISO, monthKey, cn } from '@/lib/utils';
 import { clientName, reservationRoomLabels, roomName, mediatorName } from '@/lib/lookups';
 import type { CashType } from '@/types';
@@ -55,9 +55,11 @@ export default function Caisse() {
     const items: { id: string; label: string; sub: string; amount: number; date: string; kind: 'res' | 'sale' }[] = [];
     for (const r of data.reservations) {
       if (r.status === 'cancelled') continue;
+      const shares = agencyPaymentShares(r);
       for (const p of r.payments) {
-        if (p.date >= from && p.date <= to) {
-          items.push({ id: p.id, label: clientName(data, r.clientId), sub: `${r.code} · ${reservationRoomLabels(data, r)}`, amount: p.amount, date: p.date, kind: 'res' });
+        const part = shares.get(p.id) ?? 0;
+        if (part > 0 && p.date >= from && p.date <= to) {
+          items.push({ id: p.id, label: clientName(data, r.clientId), sub: `${r.code} · ${reservationRoomLabels(data, r)}`, amount: part, date: p.date, kind: 'res' });
         }
       }
     }
@@ -124,8 +126,9 @@ export default function Caisse() {
           style={{ backgroundSize: '200% 200%' }}>
           <div className="absolute inset-0 bg-grad-secondary animate-gradient-shift opacity-80" style={{ backgroundSize: '200% 200%' }} />
           <div className="relative">
-            <div className="flex items-center gap-2 text-white/80"><Wallet size={18} /><span className="text-sm font-medium">{t('caisse.balance')}</span></div>
-            <p className="mt-2 text-4xl font-extrabold text-white"><AnimatedNumber value={balance} format={formatDA} /></p>
+            <div className="flex items-center gap-2 text-white/80"><Wallet size={18} /><span className="text-sm font-medium">{t('expenses.periodTotal')}</span></div>
+            <p className="mt-2 text-4xl font-extrabold text-white"><AnimatedNumber value={recap.net} format={formatDA} /></p>
+            <p className="mt-1 text-xs text-white/70">{formatDate(from, lang)} → {formatDate(to, lang)}</p>
           </div>
         </motion.div>
 
