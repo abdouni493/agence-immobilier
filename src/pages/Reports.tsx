@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { TextField } from '@/components/ui/Field';
 import { Badge } from '@/components/ui/Badge';
 import { buildReportData, buildReportHTML, type ReportData } from '@/lib/report';
-import { printHTML } from '@/lib/print';
+import { printDoc } from '@/lib/print';
 import { reservationPaid, salePaid } from '@/store/selectors';
 import { formatDA, formatDate, todayISO, addDaysISO, cn } from '@/lib/utils';
 import { clientName, roomName } from '@/lib/lookups';
@@ -41,7 +41,7 @@ export default function Reports() {
   };
 
   const print = () => {
-    if (report) printHTML('Rapport', buildReportHTML(data, report, storeInfo, from, to));
+    if (report) printDoc('Rapport', () => buildReportHTML(data, report, storeInfo, from, to));
   };
 
   return (

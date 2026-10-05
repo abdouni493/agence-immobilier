@@ -4,23 +4,54 @@ import {
   reservationPaid, reservationRemaining, salePaid, saleRemaining,
   purchasePaid, purchaseRemaining, mediatorStats,
 } from '@/store/selectors';
-import { formatDA, formatDate } from './utils';
+import { formatDA, formatDate as fmtDate } from './utils';
+import { askPrintLang, type PrintLang } from './printLang';
 import { clientById, serviceName, mediatorName, reservationPeriod } from './lookups';
 import {
   formatDZD, ZAKAT_RATE, NISAB_GOLD_GRAMS, type ZakatInputs, type ZakatResult,
 } from './zakat';
 
+// ─── Print language ─────────────────────────────────────────────────────────
+
+/** Language the document being built is written in (set by printDoc). */
+let LANG: PrintLang = 'fr';
+
+/** Picks the French or the Arabic wording for the current document. */
+export function tr(fr: string, ar: string): string {
+  return LANG === 'ar' ? ar : fr;
+}
+
+/** Dates follow the document language. */
+const formatDate = (iso: string) => fmtDate(iso, LANG);
+
+/** Builds a document in the given language (restoring the previous one). */
+export function withPrintLang<T>(lang: PrintLang, build: () => T): T {
+  const prev = LANG;
+  LANG = lang;
+  try { return build(); } finally { LANG = prev; }
+}
+
+/**
+ * Asks the user for French or Arabic, then builds and prints the document in
+ * that language. Does nothing when the picker is dismissed.
+ */
+export async function printDoc(title: string, build: () => string): Promise<void> {
+  const lang = await askPrintLang();
+  if (!lang) return;
+  printHTML(title, withPrintLang(lang, build), lang);
+}
+
 /** Duration wording of a reservation: "3 nuit(s)" or "6 mois". */
 function durationLabel(data: AppData, r: Reservation): string {
   const units = r.nights;
   return reservationPeriod(data, r) === 'month'
-    ? `${units} mois`
-    : `${units} nuit(s)`;
+    ? tr(`${units} mois`, `${units} شهر`)
+    : tr(`${units} nuit(s)`, `${units} ليلة`);
 }
 
 /** Header of the price column: "Prix/nuit" or "Prix/mois". */
 function unitPriceHeader(data: AppData, r: Reservation): string {
-  return reservationPeriod(data, r) === 'month' ? 'Prix/mois' : 'Prix/nuit';
+  return reservationPeriod(data, r) === 'month' ? tr('Prix/mois', 'السعر/شهر') : tr('Prix/nuit', 'السعر/ليلة');
 }
 
 export const PRINT_STYLES = `
@@ -186,6 +217,31 @@ export const PRINT_STYLES = `
   .section, .party, .fee-box, .totals-wrap, .amount-hero, .sign-grid, table { page-break-inside: avoid; }
 
   @page { size: A4; margin: 10mm; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* ── Arabic (right-to-left) documents ── */
+  html[dir="rtl"] body { font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; }
+  html[dir="rtl"] * { letter-spacing: 0 !important; }
+  html[dir="rtl"] th { text-align: right; }
+  html[dir="rtl"] .right { text-align: left; }
+  html[dir="rtl"] .totals-wrap { margin-left: 0; margin-right: auto; }
+  html[dir="rtl"] .head-side.left { text-align: right; }
+  html[dir="rtl"] .head-side.right { text-align: left; }
+  html[dir="rtl"] .clauses ol { padding-left: 0; padding-right: 18px; }
+
+  /* ── Termination letter (same charter as the rental contract) ── */
+  .tm-decl { margin: 0 0 9px; padding: 8px 12px; border: 2px solid #bae6fd; background: #f0f9ff; border-radius: 10px; font-weight: 700; color: #0369a1; }
+  .tm-row { display: flex; align-items: flex-end; gap: 8px; margin: 3px 0; }
+  .tm-row .k { white-space: nowrap; font-weight: 700; color: #475569; }
+  .tm-fill { flex: 1; min-height: 17px; border-bottom: 1.3px dotted #7dd3fc; padding: 0 5px 1px; font-weight: 700; color: #0f172a; }
+  .tm-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+  .tm-check { display: flex; align-items: center; gap: 26px; margin: 4px 0; }
+  .tm-check .k { font-weight: 700; color: #475569; }
+  .tm-box { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+  .tm-box i { display: inline-grid; place-items: center; width: 15px; height: 15px; border: 1.6px solid #0284c7; border-radius: 3px; font-style: normal; font-size: 11px; line-height: 1; font-weight: 900; color: #0369a1; }
+  .tm-line { min-height: 19px; border-bottom: 1.3px dotted #7dd3fc; padding: 0 5px 1px; font-weight: 600; margin: 2px 0; }
+  .tm-closing { margin: 8px 0 4px; font-weight: 700; color: #334155; }
+  .tm-made { width: 46%; margin-inline-start: auto; }
 
   @media print {
     body { padding: 0; font-size: 12px; }
@@ -196,20 +252,53 @@ export const PRINT_STYLES = `
   }
 `;
 
-export function printHTML(title: string, bodyHtml: string) {
+/** Printable area of an A4 sheet with 10mm margins, in CSS pixels. */
+const PAGE_W = 718;
+const PAGE_H = 1040;
+/** Below this scale a document is left to flow over several pages. */
+const MIN_FIT_SCALE = 0.55;
+
+export function printHTML(title: string, bodyHtml: string, lang: PrintLang = LANG) {
   const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  // Laid out off-screen at A4 width so the document can be measured.
+  iframe.style.cssText = `position:fixed;left:-10000px;top:0;width:${PAGE_W + 40}px;height:${PAGE_H}px;border:0;visibility:hidden`;
   document.body.appendChild(iframe);
-  const doc = iframe.contentWindow?.document;
-  if (!doc) return;
+  const win = iframe.contentWindow;
+  const doc = win?.document;
+  if (!win || !doc) return;
+  const dir = lang === 'ar' ? 'rtl' : 'ltr';
   doc.open();
-  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body>${bodyHtml}</body></html>`);
+  doc.write(`<!doctype html><html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body style="padding:0;width:${PAGE_W}px">${bodyHtml}</body></html>`);
   doc.close();
-  iframe.contentWindow?.focus();
-  setTimeout(() => {
-    iframe.contentWindow?.print();
-    setTimeout(() => document.body.removeChild(iframe), 500);
-  }, 350);
+
+  const images = Array.from(doc.images).map((img) =>
+    img.complete ? Promise.resolve() : new Promise<void>((res) => { img.onload = img.onerror = () => res(); }));
+
+  Promise.all(images).then(() => {
+    // Shrink the document so it fits on a single A4 page: widen the body by
+    // 1/scale and zoom it back down, so it keeps the full page width.
+    const h = doc.body.scrollHeight;
+    if (h > PAGE_H) {
+      let scale = PAGE_H / h;
+      for (let i = 0; i < 3 && scale >= MIN_FIT_SCALE; i++) {
+        doc.body.style.width = `${PAGE_W / scale}px`;
+        const next = doc.body.scrollHeight * scale;
+        if (next <= PAGE_H) break;
+        scale *= PAGE_H / next;
+      }
+      if (scale >= MIN_FIT_SCALE) {
+        doc.body.style.width = `${PAGE_W / scale}px`;
+        (doc.body.style as CSSStyleDeclaration & { zoom: string }).zoom = String(scale);
+      } else {
+        doc.body.style.width = `${PAGE_W}px`;
+      }
+    }
+    win.focus();
+    setTimeout(() => {
+      win.print();
+      setTimeout(() => document.body.removeChild(iframe), 500);
+    }, 150);
+  });
 }
 
 export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo): string {
@@ -236,9 +325,9 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
   }).join('');
 
   const serviceSection = r.services.length > 0 ? `
-    <p class="tbl-head">✨ Services additionnels</p>
+    <p class="tbl-head">✨ ${tr('Services additionnels', 'خدمات إضافية')}</p>
     <table>
-      <thead><tr><th>Service</th><th class="right">Qté</th><th class="right">P.U.</th><th class="right">Total</th></tr></thead>
+      <thead><tr><th>${tr('Service', 'الخدمة')}</th><th class="right">${tr('Qté', 'الكمية')}</th><th class="right">${tr('P.U.', 'سعر الوحدة')}</th><th class="right">${tr('Total', 'المجموع')}</th></tr></thead>
       <tbody>${r.services.map((sv) => `<tr>
         <td>${serviceName(data, sv.serviceId)}</td>
         <td class="right">${sv.quantity}</td>
@@ -248,26 +337,26 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
     </table>` : '';
 
   return `
-  <div class="doc">
-    ${docHeader(store, r.code, `Créé le ${formatDate(r.createdAt)}`, 'Bon de Location')}
+  <div class="doc compact">
+    ${docHeader(store, r.code, `${tr('Créé le', 'أنشئ في')} ${formatDate(r.createdAt)}`, tr('Bon de Location', 'وصل الكراء'))}
 
     <!-- Owner of the apartment + client -->
     <div class="grid2">
       ${ownerSection(data, mainRoomId)}
-      ${clientSection(client, '👤 Client')}
+      ${clientSection(client)}
     </div>
 
     <div class="section green" style="margin-bottom:14px">
-      <h3>📅 Location</h3>
-      <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
-      <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
-      <p><strong>Durée:</strong> ${durationLabel(data, r)}</p>
+      <h3>📅 ${tr('Location', 'الكراء')}</h3>
+      <p><strong>${tr('Arrivée :', 'الدخول :')}</strong> ${formatDate(r.checkIn)} ${tr('à', 'على')} ${r.checkInTime}</p>
+      <p><strong>${tr('Départ :', 'الخروج :')}</strong> ${formatDate(r.checkOut)} ${tr('à', 'على')} ${r.checkOutTime}</p>
+      <p><strong>${tr('Durée :', 'المدة :')}</strong> ${durationLabel(data, r)}</p>
     </div>
 
     <!-- Apartments -->
-    <p class="tbl-head">🏠 Appartement(s)</p>
+    <p class="tbl-head">🏠 ${tr('Appartement(s)', 'الشقق')}</p>
     <table>
-      <thead><tr><th>Nom</th><th>Étage</th><th>Catégorie</th><th class="right">${unitPriceHeader(data, r)}</th><th class="right">Durée</th><th class="right">Sous-total</th></tr></thead>
+      <thead><tr><th>${tr('Nom', 'الاسم')}</th><th>${tr('Étage', 'الطابق')}</th><th>${tr('Catégorie', 'الفئة')}</th><th class="right">${unitPriceHeader(data, r)}</th><th class="right">${tr('Durée', 'المدة')}</th><th class="right">${tr('Sous-total', 'المجموع الجزئي')}</th></tr></thead>
       <tbody>${roomRows}</tbody>
     </table>
 
@@ -277,30 +366,30 @@ export function buildInvoiceHTML(data: AppData, r: Reservation, store: StoreInfo
 
     <!-- Totals -->
     <div class="totals-wrap">
-      <div class="row"><span>Loyer</span><span>${formatDA(rentTotal)}</span></div>
-      ${fee > 0 ? `<div class="row"><span>Frais d'agence</span><span class="badge-fee">${formatDA(fee)}</span></div>` : ''}
-      <div class="row"><span>Total location</span><strong>${formatDA(r.total)}</strong></div>
-      <div class="row"><span>Total payé</span><span class="badge-paid">${formatDA(paid)}</span></div>
-      <div class="row grand"><span>Reste dû</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
+      <div class="row"><span>${tr('Loyer', 'الإيجار')}</span><span>${formatDA(rentTotal)}</span></div>
+      ${fee > 0 ? `<div class="row"><span>${tr("Frais d'agence", 'أتعاب الوكالة')}</span><span class="badge-fee">${formatDA(fee)}</span></div>` : ''}
+      <div class="row"><span>${tr('Total location', 'مجموع الكراء')}</span><strong>${formatDA(r.total)}</strong></div>
+      <div class="row"><span>${tr('Total payé', 'المبلغ المدفوع')}</span><span class="badge-paid">${formatDA(paid)}</span></div>
+      <div class="row grand"><span>${tr('Reste dû', 'الباقي')}</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
     </div>
 
     <!-- Stamp -->
     <div class="stamp">
       <div style="font-size:11px;color:#64748b">
-        <p>Le client reconnaît avoir pris connaissance des conditions de séjour.</p>
-        <p style="margin-top:28px">Signature client : ____________________</p>
+        <p>${tr('Le client reconnaît avoir pris connaissance des conditions de séjour.', 'يقر الزبون بأنه اطلع على شروط الإقامة.')}</p>
+        <p style="margin-top:28px">${tr('Signature client', 'توقيع الزبون')} : ____________________</p>
       </div>
       ${eStamp(store)}
     </div>
 
-    <div class="foot">Document généré par ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — Merci de votre confiance.</div>
+    <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
   </div>`;
 }
 
 // ─── Shared building blocks for the new documents ───────────────────────────
 
 /** Bold phone number, with an optional light label in front of it. */
-function tel(number?: string, label = 'Tél :'): string {
+function tel(number?: string, label = tr('Tél :', 'الهاتف :')): string {
   if (!number) return '';
   return `<p><span class="tel-label">${label}</span> <span class="tel">${number}</span></p>`;
 }
@@ -317,9 +406,9 @@ function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: 
     : `<div class="logo-placeholder">${store.name.charAt(0)}</div>`;
   // Left column: how to reach the agency. Right column: its legal identity.
   const contactLines = [
-    store.address && `<p><span class="lbl">Adresse :</span> ${store.address}</p>`,
-    store.phone && `<p><span class="lbl">Tél :</span> ${store.phone}</p>`,
-    store.email && `<p><span class="lbl">Email :</span> ${store.email}</p>`,
+    store.address && `<p><span class="lbl">${tr('Adresse :', 'العنوان :')}</span> ${store.address}</p>`,
+    store.phone && `<p><span class="lbl">${tr('Tél :', 'الهاتف :')}</span> ${store.phone}</p>`,
+    store.email && `<p><span class="lbl">${tr('Email :', 'البريد :')}</span> ${store.email}</p>`,
   ].filter(Boolean).join('');
   const legalLines = [
     store.rc && `<p><span class="lbl">RC :</span> ${store.rc}</p>`,
@@ -340,7 +429,7 @@ function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: 
       </div>
       <div class="doc-band">
         <span class="kind">${docTitle}</span>
-        <span class="code">N° ${code}</span>
+        <span class="code">${tr('N°', 'رقم')} <bdi dir="ltr">${code}</bdi></span>
         <span class="date">${dateLabel}</span>
       </div>
     </div>`;
@@ -355,7 +444,7 @@ function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: 
 function eStamp(store: StoreInfo): string {
   const name = (store.name ?? '').toUpperCase();
   const phone = (store.phone ?? '').trim();
-  const bottom = phone ? `TÉL : ${phone}` : 'CACHET OFFICIEL';
+  const bottom = phone ? `${tr('TÉL', 'الهاتف')} : ${phone}` : tr('CACHET OFFICIEL', 'الختم الرسمي');
   const nameSize = name.length > 34 ? 8 : name.length > 26 ? 9.5 : name.length > 18 ? 11.5 : 13.5;
   const bottomSize = bottom.length > 24 ? 8.5 : 10.5;
   return `
@@ -375,16 +464,16 @@ function eStamp(store: StoreInfo): string {
         </text>
         <text x="16" y="105" class="cc-star">✦</text>
         <text x="184" y="105" class="cc-star" text-anchor="end">✦</text>
-        <text x="100" y="97" text-anchor="middle" class="cc-center" font-size="20">CACHET</text>
+        <text x="100" y="97" text-anchor="middle" class="cc-center" font-size="20">${tr('CACHET', 'ختم')}</text>
         <line x1="64" y1="109" x2="136" y2="109" class="cc-divider" />
-        <text x="100" y="123" text-anchor="middle" class="cc-center-sub">Signature électronique</text>
+        <text x="100" y="123" text-anchor="middle" class="cc-center-sub">${tr('Signature électronique', 'توقيع إلكتروني')}</text>
       </svg>
     </div>`;
 }
 
 /** Human label for an identity-document type. */
 function docTypeLabel(t?: Client['documentType']): string {
-  return t === 'permis' ? 'Permis' : t === 'passeport' ? 'Passeport' : 'CIN';
+  return t === 'permis' ? tr('Permis', 'رخصة السياقة') : t === 'passeport' ? tr('Passeport', 'جواز السفر') : tr('CIN', 'بطاقة التعريف');
 }
 
 /**
@@ -409,7 +498,7 @@ function ownerData(data: AppData, roomId: string | undefined) {
 }
 
 /** Owner block of an apartment (propriétaire du bien) — full information. */
-function ownerSection(data: AppData, roomId: string | undefined, title = '🔑 Propriétaire du bien'): string {
+function ownerSection(data: AppData, roomId: string | undefined, title = tr('🔑 Propriétaire du bien', '🔑 مالك العقار')): string {
   const o = ownerData(data, roomId);
   if (!o.name && !o.phone) {
     return `<div class="section orange"><h3>${title}</h3><p>—</p></div>`;
@@ -423,8 +512,8 @@ function ownerSection(data: AppData, roomId: string | undefined, title = '🔑 P
       ${tel(phones)}
       ${o.email ? `<p>${o.email}</p>` : ''}
       ${loc ? `<p>${loc}</p>` : ''}
-      ${o.docNumber ? `<p><span class="tel-label">Pièce :</span> ${o.docNumber} (${docTypeLabel(o.docType)})</p>` : ''}
-      ${o.room ? `<p><span class="tel-label">Bien :</span> ${o.room.name}${o.room.commune ? ` — ${o.room.commune}` : ''}</p>` : ''}
+      ${o.docNumber ? `<p><span class="tel-label">${tr('Pièce :', 'الوثيقة :')}</span> ${o.docNumber} (${docTypeLabel(o.docType)})</p>` : ''}
+      ${o.room ? `<p><span class="tel-label">${tr('Bien :', 'العقار :')}</span> ${o.room.name}${o.room.commune ? ` — ${o.room.commune}` : ''}</p>` : ''}
     </div>`;
 }
 
@@ -435,15 +524,15 @@ function ownerParty(data: AppData, roomId: string | undefined): string {
   const phones = [o.phone, o.phone2].filter(Boolean).join(' / ');
   return `
     <div class="party">
-      <h3>Le Propriétaire</h3>
-      <p class="role">Propriétaire du bien</p>
+      <h3>${tr('Le Propriétaire', 'المالك')}</h3>
+      <p class="role">${tr('Propriétaire du bien', 'مالك العقار')}</p>
       <p><strong>${o.name || '—'}</strong></p>
       ${o.profession ? `<p>${o.profession}</p>` : ''}
       ${tel(phones)}
       ${o.email ? `<p>${o.email}</p>` : ''}
       ${loc ? `<p>${loc}</p>` : ''}
-      ${o.docNumber ? `<p>Pièce : ${o.docNumber} (${docTypeLabel(o.docType)})</p>` : ''}
-      ${o.room ? `<p><span class="tel-label">Bien :</span> ${o.room.name}${o.room.commune ? ` — ${o.room.commune}` : ''}</p>` : ''}
+      ${o.docNumber ? `<p>${tr('Pièce :', 'الوثيقة :')} ${o.docNumber} (${docTypeLabel(o.docType)})</p>` : ''}
+      ${o.room ? `<p><span class="tel-label">${tr('Bien :', 'العقار :')}</span> ${o.room.name}${o.room.commune ? ` — ${o.room.commune}` : ''}</p>` : ''}
     </div>`;
 }
 
@@ -456,44 +545,44 @@ function agencyFeeBox(data: AppData, r: Reservation): string {
     ? data.workers.find((w) => w.id === r.agencyFeeWorkerId)
     : undefined;
   const sub = commission > 0 && worker
-    ? `<div class="fee-sub"><strong>Commission employé :</strong> ${worker.name} — ${r.agencyFeePercent ?? 0}% des frais, soit ${formatDA(commission)}</div>`
+    ? `<div class="fee-sub"><strong>${tr('Commission employé :', 'عمولة الموظف :')}</strong> ${worker.name} — ${r.agencyFeePercent ?? 0}% ${tr('des frais, soit', 'من الأتعاب، أي')} ${formatDA(commission)}</div>`
     : '';
   return `
     <div class="fee-box">
-      <h3>💼 Frais d'agence</h3>
+      <h3>💼 ${tr("Frais d'agence", 'أتعاب الوكالة')}</h3>
       <div class="fee-row">
-        <span>Montant des frais d'agence (inclus dans le total)</span>
+        <span>${tr("Montant des frais d'agence (inclus dans le total)", 'مبلغ أتعاب الوكالة (مدرج في المجموع)')}</span>
         <span class="fee-amount">${formatDA(fee)}</span>
       </div>
       ${sub}
     </div>`;
 }
 
-function clientSection(client: Client | undefined, title = '👤 Client'): string {
+function clientSection(client: Client | undefined, title = tr('👤 Client', '👤 الزبون')): string {
   return `
     <div class="section blue">
       <h3>${title}</h3>
       <p><strong>${client ? `${client.firstName} ${client.lastName}` : '—'}</strong></p>
-      ${client?.sexe ? `<p>${client.sexe === 'M' ? 'Masculin' : 'Féminin'}${client.profession ? ` · ${client.profession}` : ''}</p>` : ''}
+      ${client?.sexe ? `<p>${client.sexe === 'M' ? tr('Masculin', 'ذكر') : tr('Féminin', 'أنثى')}${client.profession ? ` · ${client.profession}` : ''}</p>` : ''}
       ${tel(client?.phone ? `${client.phone}${client.phone2 ? ` / ${client.phone2}` : ''}` : '')}
       ${client?.email ? `<p>${client.email}</p>` : ''}
       ${client?.city || client?.address ? `<p>${[client?.address, client?.city].filter(Boolean).join(', ')}</p>` : ''}
-      ${client?.documentType ? `<p>Pièce: ${client.documentNumber ?? '—'} (${client.documentType})</p>` : ''}
+      ${client?.documentType ? `<p>${tr('Pièce :', 'الوثيقة :')} ${client.documentNumber ?? '—'} (${docTypeLabel(client.documentType)})</p>` : ''}
     </div>`;
 }
 
-function apartmentSection(data: AppData, roomId: string, title = '🏠 Appartement'): string {
+function apartmentSection(data: AppData, roomId: string, title = tr('🏠 Appartement', '🏠 الشقة')): string {
   const room = data.rooms.find((r) => r.id === roomId);
   if (!room) return `<div class="section violet"><h3>${title}</h3><p>—</p></div>`;
   const floor = data.floors.find((f) => f.id === room.floorId)?.name;
   const lines = [
     `<p><strong>${room.name}</strong></p>`,
-    room.commune && `<p><strong>Commune:</strong> ${room.commune}</p>`,
-    `<p><strong>Ameublement:</strong> ${room.furnished ? 'Meublé' : 'Non meublé'}</p>`,
-    room.furnished && room.furnitureDescription && `<p><strong>Meubles:</strong> ${room.furnitureDescription}</p>`,
-    floor && `<p><strong>Étage:</strong> ${floor}</p>`,
-    `<p><strong>Chambres:</strong> ${room.capacity}</p>`,
-    room.description && `<p><strong>Description:</strong> ${room.description}</p>`,
+    room.commune && `<p><strong>${tr('Commune :', 'البلدية :')}</strong> ${room.commune}</p>`,
+    `<p><strong>${tr('Ameublement :', 'التأثيث :')}</strong> ${room.furnished ? tr('Meublé', 'مفروشة') : tr('Non meublé', 'غير مفروشة')}</p>`,
+    room.furnished && room.furnitureDescription && `<p><strong>${tr('Meubles :', 'الأثاث :')}</strong> ${room.furnitureDescription}</p>`,
+    floor && `<p><strong>${tr('Étage :', 'الطابق :')}</strong> ${floor}</p>`,
+    `<p><strong>${tr('Chambres :', 'الغرف :')}</strong> ${room.capacity}</p>`,
+    room.description && `<p><strong>${tr('Description :', 'الوصف :')}</strong> ${room.description}</p>`,
   ].filter(Boolean).join('');
   return `<div class="section violet"><h3>${title}</h3>${lines}</div>`;
 }
@@ -501,9 +590,9 @@ function apartmentSection(data: AppData, roomId: string, title = '🏠 Apparteme
 function paymentsTable(payments: Payment[]): string {
   if (payments.length === 0) return '';
   return `
-    <p class="tbl-head">💳 Historique des paiements</p>
+    <p class="tbl-head">💳 ${tr('Historique des paiements', 'سجل الدفعات')}</p>
     <table>
-      <thead><tr><th>Date</th><th>Note</th><th class="right">Montant</th></tr></thead>
+      <thead><tr><th>${tr('Date', 'التاريخ')}</th><th>${tr('Note', 'ملاحظة')}</th><th class="right">${tr('Montant', 'المبلغ')}</th></tr></thead>
       <tbody>${payments.map((p) => `<tr>
         <td>${formatDate(p.date)}</td>
         <td>${p.note ?? '—'}</td>
@@ -516,12 +605,12 @@ function stampSection(store: StoreInfo, signerLabel: string): string {
   return `
     <div class="stamp">
       <div style="font-size:11px;color:#64748b">
-        <p>Document établi en deux exemplaires.</p>
-        <p style="margin-top:28px">Signature ${signerLabel} : ____________________</p>
+        <p>${tr('Document établi en deux exemplaires.', 'حررت هذه الوثيقة في نسختين.')}</p>
+        <p style="margin-top:28px">${tr('Signature', 'توقيع')} ${signerLabel} : ____________________</p>
       </div>
       ${eStamp(store)}
     </div>
-    <div class="foot">Document généré par ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — Merci de votre confiance.</div>`;
+    <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>`;
 }
 
 // ─── Facture de vente ────────────────────────────────────────────────────────
@@ -534,38 +623,38 @@ export function buildSaleInvoiceHTML(data: AppData, sale: Sale, store: StoreInfo
 
   const saleDetails = `
     <div class="section green">
-      <h3>📅 Détails de la vente</h3>
-      <p><strong>Date:</strong> ${formatDate(sale.date)} à ${sale.time}</p>
-      <p><strong>Statut:</strong> ${sale.status === 'paid' ? '<span class="badge-paid">Payée</span>' : '<span class="badge-debt">Dette</span>'}</p>
-      ${sale.notes ? `<p><strong>Remarque:</strong> ${sale.notes}</p>` : ''}
+      <h3>📅 ${tr('Détails de la vente', 'تفاصيل البيع')}</h3>
+      <p><strong>${tr('Date :', 'التاريخ :')}</strong> ${formatDate(sale.date)} ${tr('à', 'على')} ${sale.time}</p>
+      <p><strong>${tr('Statut :', 'الحالة :')}</strong> ${sale.status === 'paid' ? `<span class="badge-paid">${tr('Payée', 'مدفوعة')}</span>` : `<span class="badge-debt">${tr('Dette', 'دين')}</span>`}</p>
+      ${sale.notes ? `<p><strong>${tr('Remarque :', 'ملاحظة :')}</strong> ${sale.notes}</p>` : ''}
     </div>`;
 
   const mediatorSection = mediator ? `
     <div class="section orange">
-      <h3>🤝 Médiateur</h3>
+      <h3>🤝 ${tr('Médiateur', 'الوسيط')}</h3>
       <p><strong>${mediator.firstName} ${mediator.lastName}</strong></p>
       ${tel(mediator.phone)}
-      <p><strong>Commission:</strong> ${formatDA(sale.mediatorCommission)}${sale.commissionType === 'percent' && sale.commissionPercent ? ` (${sale.commissionPercent}% du prix de vente)` : ''}</p>
+      <p><strong>${tr('Commission :', 'العمولة :')}</strong> ${formatDA(sale.mediatorCommission)}${sale.commissionType === 'percent' && sale.commissionPercent ? ` (${sale.commissionPercent}% ${tr('du prix de vente', 'من سعر البيع')})` : ''}</p>
     </div>` : '';
 
   return `
-  <div class="doc">
-    ${docHeader(store, sale.code, `Vente du ${formatDate(sale.date)} à ${sale.time}`, 'Facture de Vente')}
+  <div class="doc compact">
+    ${docHeader(store, sale.code, `${tr('Vente du', 'بيع بتاريخ')} ${formatDate(sale.date)} ${tr('à', 'على')} ${sale.time}`, tr('Facture de Vente', 'فاتورة بيع'))}
     <div class="grid2">
-      ${clientSection(client, '👤 Acheteur')}
-      ${apartmentSection(data, sale.roomId, '🏠 Appartement vendu')}
+      ${clientSection(client, tr('👤 Acheteur', '👤 المشتري'))}
+      ${apartmentSection(data, sale.roomId, tr('🏠 Appartement vendu', '🏠 الشقة المباعة'))}
     </div>
     ${mediatorSection
       ? `<div class="grid2">${mediatorSection}${saleDetails}</div>`
       : `<div style="margin-bottom:16px">${saleDetails}</div>`}
     ${paymentsTable(sale.payments)}
     <div class="totals-wrap">
-      <div class="row"><span>Prix de vente</span><strong>${formatDA(sale.price)}</strong></div>
-      <div class="row"><span>Total payé</span><span class="badge-paid">${formatDA(paid)}</span></div>
-      <div class="row"><span>Reste dû</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
-      <div class="row grand"><span>Net à payer</span><span>${formatDA(sale.price)}</span></div>
+      <div class="row"><span>${tr('Prix de vente', 'سعر البيع')}</span><strong>${formatDA(sale.price)}</strong></div>
+      <div class="row"><span>${tr('Total payé', 'المبلغ المدفوع')}</span><span class="badge-paid">${formatDA(paid)}</span></div>
+      <div class="row"><span>${tr('Reste dû', 'الباقي')}</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
+      <div class="row grand"><span>${tr('Net à payer', 'الصافي للدفع')}</span><span>${formatDA(sale.price)}</span></div>
     </div>
-    ${stampSection(store, 'acheteur')}
+    ${stampSection(store, tr('acheteur', 'المشتري'))}
   </div>`;
 }
 
@@ -577,28 +666,28 @@ export function buildPurchaseInvoiceHTML(data: AppData, purchase: Purchase, stor
   const remaining = purchaseRemaining(purchase);
 
   return `
-  <div class="doc">
-    ${docHeader(store, purchase.code, `Achat du ${formatDate(purchase.date)} à ${purchase.time}`, "Bon d'Achat")}
+  <div class="doc compact">
+    ${docHeader(store, purchase.code, `${tr('Achat du', 'شراء بتاريخ')} ${formatDate(purchase.date)} ${tr('à', 'على')} ${purchase.time}`, tr("Bon d'Achat", 'وصل شراء'))}
     <div class="grid2">
-      ${clientSection(client, '👤 Vendeur')}
-      ${apartmentSection(data, purchase.roomId, '🏠 Appartement acquis')}
+      ${clientSection(client, tr('👤 Vendeur', '👤 البائع'))}
+      ${apartmentSection(data, purchase.roomId, tr('🏠 Appartement acquis', '🏠 الشقة المقتناة'))}
     </div>
     <div class="section green" style="margin-bottom:16px">
-      <h3>📅 Détails de l'achat</h3>
-      <p><strong>Date:</strong> ${formatDate(purchase.date)} à ${purchase.time}</p>
-      <p><strong>Prix d'achat:</strong> ${formatDA(purchase.purchasePrice)}</p>
-      <p><strong>Prix de revente prévu:</strong> ${formatDA(purchase.salePrice)}</p>
-      <p><strong>Statut:</strong> ${purchase.status === 'paid' ? '<span class="badge-paid">Payé</span>' : '<span class="badge-debt">Dette</span>'}</p>
-      ${purchase.notes ? `<p><strong>Remarque:</strong> ${purchase.notes}</p>` : ''}
+      <h3>📅 ${tr("Détails de l'achat", 'تفاصيل الشراء')}</h3>
+      <p><strong>${tr('Date :', 'التاريخ :')}</strong> ${formatDate(purchase.date)} ${tr('à', 'على')} ${purchase.time}</p>
+      <p><strong>${tr("Prix d'achat :", 'سعر الشراء :')}</strong> ${formatDA(purchase.purchasePrice)}</p>
+      <p><strong>${tr('Prix de revente prévu :', 'سعر إعادة البيع المتوقع :')}</strong> ${formatDA(purchase.salePrice)}</p>
+      <p><strong>${tr('Statut :', 'الحالة :')}</strong> ${purchase.status === 'paid' ? `<span class="badge-paid">${tr('Payé', 'مدفوع')}</span>` : `<span class="badge-debt">${tr('Dette', 'دين')}</span>`}</p>
+      ${purchase.notes ? `<p><strong>${tr('Remarque :', 'ملاحظة :')}</strong> ${purchase.notes}</p>` : ''}
     </div>
     ${paymentsTable(purchase.payments)}
     <div class="totals-wrap">
-      <div class="row"><span>Prix d'achat</span><strong>${formatDA(purchase.purchasePrice)}</strong></div>
-      <div class="row"><span>Payé par l'agence</span><span class="badge-paid">${formatDA(paid)}</span></div>
-      <div class="row"><span>Reste à payer</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
-      <div class="row grand"><span>Total achat</span><span>${formatDA(purchase.purchasePrice)}</span></div>
+      <div class="row"><span>${tr("Prix d'achat", 'سعر الشراء')}</span><strong>${formatDA(purchase.purchasePrice)}</strong></div>
+      <div class="row"><span>${tr("Payé par l'agence", 'المدفوع من الوكالة')}</span><span class="badge-paid">${formatDA(paid)}</span></div>
+      <div class="row"><span>${tr('Reste à payer', 'الباقي للدفع')}</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
+      <div class="row grand"><span>${tr('Total achat', 'مجموع الشراء')}</span><span>${formatDA(purchase.purchasePrice)}</span></div>
     </div>
-    ${stampSection(store, 'vendeur')}
+    ${stampSection(store, tr('vendeur', 'البائع'))}
   </div>`;
 }
 
@@ -613,10 +702,10 @@ function receiptShell(
   totals: { label: string; value: string; cls?: string }[],
 ): string {
   return `
-  <div class="doc">
-    ${docHeader(store, code, `Paiement du ${formatDate(payment.date)}`, title)}
+  <div class="doc compact">
+    ${docHeader(store, code, `${tr('Paiement du', 'دفعة بتاريخ')} ${formatDate(payment.date)}`, title)}
     <div class="section green" style="margin-bottom:16px;text-align:center;padding:18px">
-      <h3>💰 Montant du paiement</h3>
+      <h3>💰 ${tr('Montant du paiement', 'مبلغ الدفعة')}</h3>
       <p style="font-size:26px;font-weight:900;color:#059669;margin-top:4px">${formatDA(payment.amount)}</p>
       ${payment.note ? `<p style="margin-top:6px;color:#475569">${payment.note}</p>` : ''}
     </div>
@@ -624,7 +713,7 @@ function receiptShell(
     <div class="totals-wrap">
       ${totals.map((t) => `<div class="row"><span>${t.label}</span><span class="${t.cls ?? ''}">${t.value}</span></div>`).join('')}
     </div>
-    ${stampSection(store, 'client')}
+    ${stampSection(store, tr('client', 'الزبون'))}
   </div>`;
 }
 
@@ -634,20 +723,20 @@ export function buildSalePaymentReceiptHTML(
   const client = clientById(data, sale.clientId);
   const infos = `
     <div class="grid2">
-      ${clientSection(client, '👤 Acheteur')}
-      ${apartmentSection(data, sale.roomId, '🏠 Appartement vendu')}
+      ${clientSection(client, tr('👤 Acheteur', '👤 المشتري'))}
+      ${apartmentSection(data, sale.roomId, tr('🏠 Appartement vendu', '🏠 الشقة المباعة'))}
     </div>
     <div class="section orange" style="margin-bottom:16px">
-      <h3>📋 Vente ${sale.code}</h3>
-      <p><strong>Date de vente:</strong> ${formatDate(sale.date)} à ${sale.time}</p>
-      <p><strong>Prix de vente:</strong> ${formatDA(sale.price)}</p>
-      ${sale.mediatorId ? `<p><strong>Médiateur:</strong> ${mediatorName(data, sale.mediatorId)}</p>` : ''}
+      <h3>📋 ${tr('Vente', 'بيع')} ${sale.code}</h3>
+      <p><strong>${tr('Date de vente :', 'تاريخ البيع :')}</strong> ${formatDate(sale.date)} ${tr('à', 'على')} ${sale.time}</p>
+      <p><strong>${tr('Prix de vente :', 'سعر البيع :')}</strong> ${formatDA(sale.price)}</p>
+      ${sale.mediatorId ? `<p><strong>${tr('Médiateur :', 'الوسيط :')}</strong> ${mediatorName(data, sale.mediatorId)}</p>` : ''}
     </div>
     ${paymentsTable(sale.payments)}`;
-  return receiptShell(store, sale.code, 'Reçu de Paiement — Vente', payment, infos, [
-    { label: 'Prix de vente', value: formatDA(sale.price) },
-    { label: 'Total payé', value: formatDA(salePaid(sale)), cls: 'badge-paid' },
-    { label: 'Reste dû', value: formatDA(saleRemaining(sale)), cls: saleRemaining(sale) > 0 ? 'badge-debt' : 'badge-paid' },
+  return receiptShell(store, sale.code, tr('Reçu de Paiement — Vente', 'وصل دفع — بيع'), payment, infos, [
+    { label: tr('Prix de vente', 'سعر البيع'), value: formatDA(sale.price) },
+    { label: tr('Total payé', 'المبلغ المدفوع'), value: formatDA(salePaid(sale)), cls: 'badge-paid' },
+    { label: tr('Reste dû', 'الباقي'), value: formatDA(saleRemaining(sale)), cls: saleRemaining(sale) > 0 ? 'badge-debt' : 'badge-paid' },
   ]);
 }
 
@@ -657,20 +746,20 @@ export function buildPurchasePaymentReceiptHTML(
   const client = clientById(data, purchase.clientId);
   const infos = `
     <div class="grid2">
-      ${clientSection(client, '👤 Vendeur')}
-      ${apartmentSection(data, purchase.roomId, '🏠 Appartement acquis')}
+      ${clientSection(client, tr('👤 Vendeur', '👤 البائع'))}
+      ${apartmentSection(data, purchase.roomId, tr('🏠 Appartement acquis', '🏠 الشقة المقتناة'))}
     </div>
     <div class="section orange" style="margin-bottom:16px">
-      <h3>📋 Achat ${purchase.code}</h3>
-      <p><strong>Date d'achat:</strong> ${formatDate(purchase.date)} à ${purchase.time}</p>
-      <p><strong>Prix d'achat:</strong> ${formatDA(purchase.purchasePrice)}</p>
-      <p><strong>Prix de revente prévu:</strong> ${formatDA(purchase.salePrice)}</p>
+      <h3>📋 ${tr('Achat', 'شراء')} ${purchase.code}</h3>
+      <p><strong>${tr("Date d'achat :", 'تاريخ الشراء :')}</strong> ${formatDate(purchase.date)} ${tr('à', 'على')} ${purchase.time}</p>
+      <p><strong>${tr("Prix d'achat :", 'سعر الشراء :')}</strong> ${formatDA(purchase.purchasePrice)}</p>
+      <p><strong>${tr('Prix de revente prévu :', 'سعر إعادة البيع المتوقع :')}</strong> ${formatDA(purchase.salePrice)}</p>
     </div>
     ${paymentsTable(purchase.payments)}`;
-  return receiptShell(store, purchase.code, 'Reçu de Paiement — Achat', payment, infos, [
-    { label: "Prix d'achat", value: formatDA(purchase.purchasePrice) },
-    { label: "Payé par l'agence", value: formatDA(purchasePaid(purchase)), cls: 'badge-paid' },
-    { label: 'Reste à payer', value: formatDA(purchaseRemaining(purchase)), cls: purchaseRemaining(purchase) > 0 ? 'badge-debt' : 'badge-paid' },
+  return receiptShell(store, purchase.code, tr('Reçu de Paiement — Achat', 'وصل دفع — شراء'), payment, infos, [
+    { label: tr("Prix d'achat", 'سعر الشراء'), value: formatDA(purchase.purchasePrice) },
+    { label: tr("Payé par l'agence", 'المدفوع من الوكالة'), value: formatDA(purchasePaid(purchase)), cls: 'badge-paid' },
+    { label: tr('Reste à payer', 'الباقي للدفع'), value: formatDA(purchaseRemaining(purchase)), cls: purchaseRemaining(purchase) > 0 ? 'badge-debt' : 'badge-paid' },
   ]);
 }
 
@@ -689,19 +778,19 @@ export function buildReservationPaymentReceiptHTML(
       ${clientSection(client)}
     </div>
     <div class="section violet" style="margin-bottom:14px">
-      <h3>📋 Location ${r.code}</h3>
-      <p><strong>Appartement(s):</strong> ${roomsList || '—'}</p>
-      <p><strong>Arrivée:</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
-      <p><strong>Départ:</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
-      <p><strong>Durée:</strong> ${durationLabel(data, r)}</p>
+      <h3>📋 ${tr('Location', 'كراء')} ${r.code}</h3>
+      <p><strong>${tr('Appartement(s) :', 'الشقق :')}</strong> ${roomsList || '—'}</p>
+      <p><strong>${tr('Arrivée :', 'الدخول :')}</strong> ${formatDate(r.checkIn)} ${tr('à', 'على')} ${r.checkInTime}</p>
+      <p><strong>${tr('Départ :', 'الخروج :')}</strong> ${formatDate(r.checkOut)} ${tr('à', 'على')} ${r.checkOutTime}</p>
+      <p><strong>${tr('Durée :', 'المدة :')}</strong> ${durationLabel(data, r)}</p>
     </div>
     ${agencyFeeBox(data, r)}
     ${paymentsTable(r.payments)}`;
-  return receiptShell(store, r.code, 'Reçu de Paiement — Location', payment, infos, [
-    ...(fee > 0 ? [{ label: "Dont frais d'agence", value: formatDA(fee), cls: 'badge-fee' }] : []),
-    { label: 'Total location', value: formatDA(r.total) },
-    { label: 'Total payé', value: formatDA(reservationPaid(r)), cls: 'badge-paid' },
-    { label: 'Reste dû', value: formatDA(reservationRemaining(r)), cls: reservationRemaining(r) > 0 ? 'badge-debt' : 'badge-paid' },
+  return receiptShell(store, r.code, tr('Reçu de Paiement — Location', 'وصل دفع — كراء'), payment, infos, [
+    ...(fee > 0 ? [{ label: tr("Dont frais d'agence", 'منها أتعاب الوكالة'), value: formatDA(fee), cls: 'badge-fee' }] : []),
+    { label: tr('Total location', 'مجموع الكراء'), value: formatDA(r.total) },
+    { label: tr('Total payé', 'المبلغ المدفوع'), value: formatDA(reservationPaid(r)), cls: 'badge-paid' },
+    { label: tr('Reste dû', 'الباقي'), value: formatDA(reservationRemaining(r)), cls: reservationRemaining(r) > 0 ? 'badge-debt' : 'badge-paid' },
   ]);
 }
 
@@ -724,32 +813,32 @@ export function buildMediatorPaymentReceiptHTML(
   const infos = `
     <div class="grid2">
       <div class="section blue">
-        <h3>🤝 Médiateur</h3>
+        <h3>🤝 ${tr('Médiateur', 'الوسيط')}</h3>
         <p><strong>${mediator.firstName} ${mediator.lastName}</strong></p>
         ${tel(`${mediator.phone}${mediator.phone2 ? ` / ${mediator.phone2}` : ''}`)}
         ${mediator.email ? `<p>${mediator.email}</p>` : ''}
         ${mediator.city || mediator.address ? `<p>${[mediator.address, mediator.city].filter(Boolean).join(', ')}</p>` : ''}
-        ${mediator.cin ? `<p>CIN: ${mediator.cin}</p>` : ''}
+        ${mediator.cin ? `<p>${tr('CIN :', 'بطاقة التعريف :')} ${mediator.cin}</p>` : ''}
       </div>
       <div class="section violet">
-        <h3>📊 Situation des commissions</h3>
-        <p><strong>Ventes réalisées:</strong> ${stats.salesCount}</p>
-        <p><strong>Commissions gagnées:</strong> ${formatDA(stats.commissionEarned)}</p>
-        <p><strong>Déjà payé:</strong> ${formatDA(stats.paid)}</p>
-        <p><strong>Reste dû:</strong> ${formatDA(stats.remaining)}</p>
+        <h3>📊 ${tr('Situation des commissions', 'وضعية العمولات')}</h3>
+        <p><strong>${tr('Ventes réalisées :', 'المبيعات المنجزة :')}</strong> ${stats.salesCount}</p>
+        <p><strong>${tr('Commissions gagnées :', 'العمولات المكتسبة :')}</strong> ${formatDA(stats.commissionEarned)}</p>
+        <p><strong>${tr('Déjà payé :', 'المدفوع سابقا :')}</strong> ${formatDA(stats.paid)}</p>
+        <p><strong>${tr('Reste dû :', 'الباقي :')}</strong> ${formatDA(stats.remaining)}</p>
       </div>
     </div>
     ${salesRows ? `
-      <p class="tbl-head">🏠 Ventes avec ce médiateur</p>
+      <p class="tbl-head">🏠 ${tr('Ventes avec ce médiateur', 'المبيعات مع هذا الوسيط')}</p>
       <table>
-        <thead><tr><th>Code</th><th>Appartement</th><th>Date</th><th class="right">Prix vente</th><th class="right">Commission</th></tr></thead>
+        <thead><tr><th>${tr('Code', 'الرمز')}</th><th>${tr('Appartement', 'الشقة')}</th><th>${tr('Date', 'التاريخ')}</th><th class="right">${tr('Prix vente', 'سعر البيع')}</th><th class="right">${tr('Commission', 'العمولة')}</th></tr></thead>
         <tbody>${salesRows}</tbody>
       </table>` : ''}
     ${paymentsTable(mediator.payments)}`;
-  return receiptShell(store, `MED-${mediator.id.slice(0, 6).toUpperCase()}`, 'Reçu de Commission — Médiateur', payment, infos, [
-    { label: 'Commissions gagnées', value: formatDA(stats.commissionEarned) },
-    { label: 'Total payé', value: formatDA(stats.paid), cls: 'badge-paid' },
-    { label: 'Reste dû', value: formatDA(stats.remaining), cls: stats.remaining > 0 ? 'badge-debt' : 'badge-paid' },
+  return receiptShell(store, `MED-${mediator.id.slice(0, 6).toUpperCase()}`, tr('Reçu de Commission — Médiateur', 'وصل عمولة — وسيط'), payment, infos, [
+    { label: tr('Commissions gagnées', 'العمولات المكتسبة'), value: formatDA(stats.commissionEarned) },
+    { label: tr('Total payé', 'المبلغ المدفوع'), value: formatDA(stats.paid), cls: 'badge-paid' },
+    { label: tr('Reste dû', 'الباقي'), value: formatDA(stats.remaining), cls: stats.remaining > 0 ? 'badge-debt' : 'badge-paid' },
   ]);
 }
 
@@ -766,63 +855,63 @@ export function buildZakatReportHTML(
     `<tr><td>${label}</td><td class="right ${cls}">${value}</td></tr>`;
 
   return `
-  <div class="doc">
-    ${docHeader(store, `ZAK-${year}`, `Exercice du 01/01/${year} au 31/12/${year}`, 'Calcul de la Zakat')}
+  <div class="doc compact">
+    ${docHeader(store, `ZAK-${year}`, tr(`Exercice du 01/01/${year} au 31/12/${year}`, `السنة المالية من 01/01/${year} إلى 31/12/${year}`), tr('Calcul de la Zakat', 'حساب الزكاة'))}
 
     <div class="doc-title-band">
-      <h2>Zakat des Biens Commerciaux</h2>
-      <div class="sub">Exercice ${year} — 1 janvier au 31 décembre · Taux ${(ZAKAT_RATE * 100).toFixed(1)} %</div>
+      <h2>${tr('Zakat des Biens Commerciaux', 'زكاة عروض التجارة')}</h2>
+      <div class="sub">${tr(`Exercice ${year} — 1 janvier au 31 décembre · Taux`, `السنة المالية ${year} — من 1 جانفي إلى 31 ديسمبر · النسبة`)} ${(ZAKAT_RATE * 100).toFixed(1)} %</div>
     </div>
 
-    <p class="tbl-head">💰 Actifs zakatables</p>
+    <p class="tbl-head">💰 ${tr('Actifs zakatables', 'الأصول الزكوية')}</p>
     <table>
-      <thead><tr><th>Poste</th><th class="right">Montant</th></tr></thead>
+      <thead><tr><th>${tr('Poste', 'البند')}</th><th class="right">${tr('Montant', 'المبلغ')}</th></tr></thead>
       <tbody>
-        ${row('Liquidités en banque', formatDZD(inputs.bankCash))}
-        ${row('Liquidités en caisse', formatDZD(inputs.cashOnHand))}
-        ${row('Commissions à encaisser', formatDZD(inputs.receivableCommissions))}
-        ${row("Biens immobiliers destinés à la revente", formatDZD(inputs.propertiesForSale))}
-        ${row('Autres marchandises', formatDZD(inputs.tradeInventory))}
-        ${row('Autres actifs zakatables', formatDZD(inputs.otherAssets))}
-        <tr><td><strong>Total des actifs</strong></td><td class="right"><strong>${formatDZD(result.totalAssets)}</strong></td></tr>
+        ${row(tr('Liquidités en banque', 'السيولة في البنك'), formatDZD(inputs.bankCash))}
+        ${row(tr('Liquidités en caisse', 'السيولة في الصندوق'), formatDZD(inputs.cashOnHand))}
+        ${row(tr('Commissions à encaisser', 'عمولات قيد التحصيل'), formatDZD(inputs.receivableCommissions))}
+        ${row(tr('Biens immobiliers destinés à la revente', 'عقارات معدة لإعادة البيع'), formatDZD(inputs.propertiesForSale))}
+        ${row(tr('Autres marchandises', 'بضائع أخرى'), formatDZD(inputs.tradeInventory))}
+        ${row(tr('Autres actifs zakatables', 'أصول زكوية أخرى'), formatDZD(inputs.otherAssets))}
+        <tr><td><strong>${tr('Total des actifs', 'مجموع الأصول')}</strong></td><td class="right"><strong>${formatDZD(result.totalAssets)}</strong></td></tr>
       </tbody>
     </table>
 
-    <p class="tbl-head">📉 Dettes exigibles</p>
+    <p class="tbl-head">📉 ${tr('Dettes exigibles', 'الديون المستحقة')}</p>
     <table>
-      <thead><tr><th>Poste</th><th class="right">Montant</th></tr></thead>
+      <thead><tr><th>${tr('Poste', 'البند')}</th><th class="right">${tr('Montant', 'المبلغ')}</th></tr></thead>
       <tbody>
-        ${row('Dettes à court terme', formatDZD(result.totalLiabilities), 'badge-debt')}
+        ${row(tr('Dettes à court terme', 'ديون قصيرة الأجل'), formatDZD(result.totalLiabilities), 'badge-debt')}
       </tbody>
     </table>
 
-    <p class="tbl-head">🧮 Étapes du calcul</p>
+    <p class="tbl-head">🧮 ${tr('Étapes du calcul', 'مراحل الحساب')}</p>
     <table>
-      <thead><tr><th>Étape</th><th class="right">Valeur</th></tr></thead>
+      <thead><tr><th>${tr('Étape', 'المرحلة')}</th><th class="right">${tr('Valeur', 'القيمة')}</th></tr></thead>
       <tbody>
-        ${row('Total des actifs', formatDZD(result.totalAssets))}
-        ${row('− Dettes exigibles', formatDZD(result.totalLiabilities))}
-        ${row('= Assiette zakatable nette', formatDZD(result.netWealth))}
+        ${row(tr('Total des actifs', 'مجموع الأصول'), formatDZD(result.totalAssets))}
+        ${row(tr('− Dettes exigibles', '− الديون المستحقة'), formatDZD(result.totalLiabilities))}
+        ${row(tr('= Assiette zakatable nette', '= الوعاء الزكوي الصافي'), formatDZD(result.netWealth))}
         ${row(
-          `Nisab (${NISAB_GOLD_GRAMS} g d'or${result.nisabFromGold ? ` × ${formatDZD(inputs.goldPricePerGram)}/g` : ''})`,
+          `${tr('Nisab', 'النصاب')} (${NISAB_GOLD_GRAMS} ${tr("g d'or", 'غ من الذهب')}${result.nisabFromGold ? ` × ${formatDZD(inputs.goldPricePerGram)}/g` : ''})`,
           formatDZD(result.nisab),
         )}
-        ${row('Nisab atteint ?', result.isDue ? 'Oui — Zakat obligatoire' : 'Non — Zakat non due')}
-        ${row('Taux appliqué', result.isDue ? `${(ZAKAT_RATE * 100).toFixed(1)} %` : '—')}
+        ${row(tr('Nisab atteint ?', 'هل بلغ النصاب ؟'), result.isDue ? tr('Oui — Zakat obligatoire', 'نعم — الزكاة واجبة') : tr('Non — Zakat non due', 'لا — الزكاة غير واجبة'))}
+        ${row(tr('Taux appliqué', 'النسبة المطبقة'), result.isDue ? `${(ZAKAT_RATE * 100).toFixed(1)} %` : '—')}
       </tbody>
     </table>
 
     <div class="amount-hero">
-      <div class="lbl">Montant de la Zakat à verser</div>
+      <div class="lbl">${tr('Montant de la Zakat à verser', 'مبلغ الزكاة الواجب إخراجه')}</div>
       <div class="val">${formatDZD(result.zakat)}</div>
       <div class="words">${
         result.isDue
-          ? `Soit ${formatDZD(result.netWealth)} × 2,5 %.`
-          : "L'assiette zakatable n'atteint pas le nisab : aucune Zakat n'est due."
+          ? `${tr('Soit', 'أي')} ${formatDZD(result.netWealth)} × 2,5 %.`
+          : tr("L'assiette zakatable n'atteint pas le nisab : aucune Zakat n'est due.", 'الوعاء الزكوي لم يبلغ النصاب : لا زكاة واجبة.')
       }</div>
     </div>
 
-    ${stampSection(store, 'responsable')}
+    ${stampSection(store, tr('responsable', 'المسؤول'))}
   </div>`;
 }
 
@@ -860,7 +949,7 @@ export function buildExpensesReportHTML(
 
   const categoryName = categoryId
     ? data.expenseCategories.find((c) => c.id === categoryId)?.name ?? '—'
-    : 'Toutes les catégories';
+    : tr('Toutes les catégories', 'جميع الفئات');
 
   const expenseRows = expenses.length
     ? expenses.map((e) => `<tr>
@@ -870,7 +959,7 @@ export function buildExpensesReportHTML(
         <td>${e.description ?? ''}</td>
         <td class="right badge-debt">${formatDA(e.amount)}</td>
       </tr>`).join('')
-    : '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Aucune dépense sur la période</td></tr>';
+    : `<tr><td colspan="5" style="text-align:center;color:#94a3b8">${tr('Aucune dépense sur la période', 'لا توجد مصاريف في هذه الفترة')}</td></tr>`;
 
   const maintRows = maintenances.length
     ? maintenances.map((m) => `<tr>
@@ -880,47 +969,47 @@ export function buildExpensesReportHTML(
         <td>${m.description ?? ''}</td>
         <td class="right badge-debt">${formatDA(m.cost)}</td>
       </tr>`).join('')
-    : '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Aucune maintenance sur la période</td></tr>';
+    : `<tr><td colspan="5" style="text-align:center;color:#94a3b8">${tr('Aucune maintenance sur la période', 'لا توجد صيانة في هذه الفترة')}</td></tr>`;
 
   const categoryRows = byCategory
     .map((c) => `<tr><td>${c.name}</td><td class="right">${formatDA(c.total)}</td></tr>`)
     .join('');
 
   return `
-  <div class="doc">
-    ${docHeader(store, `DEP-${from}_${to}`, `Période du ${formatDate(from)} au ${formatDate(to)}`, 'Rapport des Dépenses')}
+  <div class="doc compact">
+    ${docHeader(store, `DEP-${from}_${to}`, `${tr('Période du', 'الفترة من')} ${formatDate(from)} ${tr('au', 'إلى')} ${formatDate(to)}`, tr('Rapport des Dépenses', 'تقرير المصاريف'))}
 
     <div class="doc-title-band">
-      <h2>Rapport des Dépenses</h2>
+      <h2>${tr('Rapport des Dépenses', 'تقرير المصاريف')}</h2>
       <div class="sub">${formatDate(from)} → ${formatDate(to)} · ${categoryName}</div>
     </div>
 
-    <p class="tbl-head">🧾 Dépenses générales</p>
+    <p class="tbl-head">🧾 ${tr('Dépenses générales', 'المصاريف العامة')}</p>
     <table>
-      <thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Description</th><th class="right">Montant</th></tr></thead>
+      <thead><tr><th>${tr('Date', 'التاريخ')}</th><th>${tr('Libellé', 'البيان')}</th><th>${tr('Catégorie', 'الفئة')}</th><th>${tr('Description', 'الوصف')}</th><th class="right">${tr('Montant', 'المبلغ')}</th></tr></thead>
       <tbody>${expenseRows}</tbody>
     </table>
 
     ${categoryRows ? `
-      <p class="tbl-head">📊 Répartition par catégorie</p>
+      <p class="tbl-head">📊 ${tr('Répartition par catégorie', 'التوزيع حسب الفئة')}</p>
       <table>
-        <thead><tr><th>Catégorie</th><th class="right">Total</th></tr></thead>
+        <thead><tr><th>${tr('Catégorie', 'الفئة')}</th><th class="right">${tr('Total', 'المجموع')}</th></tr></thead>
         <tbody>${categoryRows}</tbody>
       </table>` : ''}
 
-    <p class="tbl-head">🔧 Maintenances</p>
+    <p class="tbl-head">🔧 ${tr('Maintenances', 'الصيانة')}</p>
     <table>
-      <thead><tr><th>Date</th><th>Appartement</th><th>Intervention</th><th>Description</th><th class="right">Coût</th></tr></thead>
+      <thead><tr><th>${tr('Date', 'التاريخ')}</th><th>${tr('Appartement', 'الشقة')}</th><th>${tr('Intervention', 'التدخل')}</th><th>${tr('Description', 'الوصف')}</th><th class="right">${tr('Coût', 'التكلفة')}</th></tr></thead>
       <tbody>${maintRows}</tbody>
     </table>
 
     <div class="totals-wrap">
-      <div class="row"><span>Dépenses générales</span><span class="badge-debt">${formatDA(expensesTotal)}</span></div>
-      <div class="row"><span>Maintenances</span><span class="badge-debt">${formatDA(maintTotal)}</span></div>
-      <div class="row grand"><span>Total des charges</span><span>${formatDA(expensesTotal + maintTotal)}</span></div>
+      <div class="row"><span>${tr('Dépenses générales', 'المصاريف العامة')}</span><span class="badge-debt">${formatDA(expensesTotal)}</span></div>
+      <div class="row"><span>${tr('Maintenances', 'الصيانة')}</span><span class="badge-debt">${formatDA(maintTotal)}</span></div>
+      <div class="row grand"><span>${tr('Total des charges', 'مجموع الأعباء')}</span><span>${formatDA(expensesTotal + maintTotal)}</span></div>
     </div>
 
-    ${stampSection(store, 'responsable')}
+    ${stampSection(store, tr('responsable', 'المسؤول'))}
   </div>`;
 }
 
@@ -951,13 +1040,13 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
 
   return `
   <div class="doc compact">
-    ${docHeader(store, r.code, `Établi le ${formatDate(r.createdAt)}`, 'Contrat de Location')}
+    ${docHeader(store, r.code, `${tr('Établi le', 'حرر في')} ${formatDate(r.createdAt)}`, tr('Contrat de Location', 'عقد كراء'))}
 
     <!-- Parties: the agency (mandataire), the owner of the apartment, the tenant -->
     <div class="parties" style="grid-template-columns:1fr 1fr 1fr">
       <div class="party">
-        <h3>Le Bailleur / Mandataire</h3>
-        <p class="role">Agence</p>
+        <h3>${tr('Le Bailleur / Mandataire', 'المؤجر / الوكيل')}</h3>
+        <p class="role">${tr('Agence', 'الوكالة')}</p>
         <p><strong>${store.name}</strong></p>
         ${store.address ? `<p>${store.address}</p>` : ''}
         ${tel(store.phone)}
@@ -966,65 +1055,65 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
       </div>
       ${ownerParty(data, mainRoomId)}
       <div class="party">
-        <h3>Le Locataire</h3>
-        <p class="role">Client</p>
+        <h3>${tr('Le Locataire', 'المستأجر')}</h3>
+        <p class="role">${tr('Client', 'الزبون')}</p>
         <p><strong>${client ? `${client.firstName} ${client.lastName}` : '—'}</strong></p>
         ${tel(client?.phone ? `${client.phone}${client.phone2 ? ` / ${client.phone2}` : ''}` : '')}
         ${client?.address || client?.city ? `<p>${[client?.address, client?.city].filter(Boolean).join(', ')}</p>` : ''}
-        ${client?.documentType ? `<p>Pièce : ${client.documentNumber ?? '—'} (${docTypeLabel(client.documentType)})</p>` : ''}
+        ${client?.documentType ? `<p>${tr('Pièce :', 'الوثيقة :')} ${client.documentNumber ?? '—'} (${docTypeLabel(client.documentType)})</p>` : ''}
       </div>
     </div>
 
-    <p class="tbl-head">🏠 Bien(s) loué(s)</p>
+    <p class="tbl-head">🏠 ${tr('Bien(s) loué(s)', 'العقارات المؤجرة')}</p>
     <table>
-      <thead><tr><th>Appartement</th><th>Localisation</th><th>Étage</th><th class="right">${unitPriceHeader(data, r)}</th><th class="right">Durée</th><th class="right">Sous-total</th></tr></thead>
+      <thead><tr><th>${tr('Appartement', 'الشقة')}</th><th>${tr('Localisation', 'الموقع')}</th><th>${tr('Étage', 'الطابق')}</th><th class="right">${unitPriceHeader(data, r)}</th><th class="right">${tr('Durée', 'المدة')}</th><th class="right">${tr('Sous-total', 'المجموع الجزئي')}</th></tr></thead>
       <tbody>${roomRows}</tbody>
     </table>
 
     <div class="grid2">
       <div class="section green">
-        <h3>📅 Durée de la location</h3>
-        <p><strong>Arrivée :</strong> ${formatDate(r.checkIn)} à ${r.checkInTime}</p>
-        <p><strong>Départ :</strong> ${formatDate(r.checkOut)} à ${r.checkOutTime}</p>
-        <p><strong>Durée :</strong> ${durationLabel(data, r)}</p>
+        <h3>📅 ${tr('Durée de la location', 'مدة الكراء')}</h3>
+        <p><strong>${tr('Arrivée :', 'الدخول :')}</strong> ${formatDate(r.checkIn)} ${tr('à', 'على')} ${r.checkInTime}</p>
+        <p><strong>${tr('Départ :', 'الخروج :')}</strong> ${formatDate(r.checkOut)} ${tr('à', 'على')} ${r.checkOutTime}</p>
+        <p><strong>${tr('Durée :', 'المدة :')}</strong> ${durationLabel(data, r)}</p>
       </div>
       <div class="section blue">
-        <h3>💰 Conditions financières</h3>
-        <p><strong>Loyer :</strong> ${formatDA(rentTotal)}</p>
-        ${fee > 0 ? `<p><strong>Frais d'agence :</strong> <span class="badge-fee">${formatDA(fee)}</span></p>` : ''}
-        <p><strong>Total à payer :</strong> ${formatDA(r.total)}</p>
-        <p><strong>Déjà versé :</strong> ${formatDA(paid)}</p>
-        <p><strong>Reste dû :</strong> <span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></p>
+        <h3>💰 ${tr('Conditions financières', 'الشروط المالية')}</h3>
+        <p><strong>${tr('Loyer :', 'الإيجار :')}</strong> ${formatDA(rentTotal)}</p>
+        ${fee > 0 ? `<p><strong>${tr("Frais d'agence :", 'أتعاب الوكالة :')}</strong> <span class="badge-fee">${formatDA(fee)}</span></p>` : ''}
+        <p><strong>${tr('Total à payer :', 'المبلغ الواجب دفعه :')}</strong> ${formatDA(r.total)}</p>
+        <p><strong>${tr('Déjà versé :', 'المدفوع :')}</strong> ${formatDA(paid)}</p>
+        <p><strong>${tr('Reste dû :', 'الباقي :')}</strong> <span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></p>
       </div>
     </div>
 
     ${agencyFeeBox(data, r)}
 
     <div class="clauses">
-      <h4>Conditions générales</h4>
+      <h4>${tr('Conditions générales', 'الشروط العامة')}</h4>
       <ol>
-        <li>La présente location est consentie pour la période du ${formatDate(r.checkIn)} au ${formatDate(r.checkOut)}, soit ${durationLabel(data, r)}.</li>
-        <li>Le montant total de la location s'élève à ${formatDA(r.total)}${fee > 0 ? `, dont ${formatDA(fee)} de frais d'agence` : ''}, payable selon l'échéancier convenu entre les parties.</li>
-        ${fee > 0 ? `<li>Les frais d'agence de ${formatDA(fee)} rémunèrent l'intermédiation de l'agence et restent acquis à celle-ci.</li>` : ''}
-        <li>Le locataire s'engage à occuper le bien loué paisiblement et à le restituer dans l'état où il l'a reçu.</li>
-        <li>Toute prolongation au-delà de la date de départ pourra donner lieu à une facturation supplémentaire au tarif en vigueur.</li>
-        <li>Le locataire demeure responsable de toute dégradation causée au bien pendant la durée de la location.</li>
-        <li>Le présent contrat est établi en deux exemplaires originaux, un pour chaque partie.</li>
+        <li>${tr(`La présente location est consentie pour la période du ${formatDate(r.checkIn)} au ${formatDate(r.checkOut)}, soit ${durationLabel(data, r)}.`, `يمنح هذا الكراء للفترة الممتدة من ${formatDate(r.checkIn)} إلى ${formatDate(r.checkOut)}، أي ${durationLabel(data, r)}.`)}</li>
+        <li>${tr(`Le montant total de la location s'élève à ${formatDA(r.total)}${fee > 0 ? `, dont ${formatDA(fee)} de frais d'agence` : ''}, payable selon l'échéancier convenu entre les parties.`, `يبلغ المبلغ الإجمالي للكراء ${formatDA(r.total)}${fee > 0 ? `، منها ${formatDA(fee)} أتعاب الوكالة` : ''}، يدفع حسب الجدول المتفق عليه بين الطرفين.`)}</li>
+        ${fee > 0 ? `<li>${tr(`Les frais d'agence de ${formatDA(fee)} rémunèrent l'intermédiation de l'agence et restent acquis à celle-ci.`, `أتعاب الوكالة البالغة ${formatDA(fee)} مقابل وساطة الوكالة وتبقى مكتسبة لها.`)}</li>` : ''}
+        <li>${tr("Le locataire s'engage à occuper le bien loué paisiblement et à le restituer dans l'état où il l'a reçu.", 'يلتزم المستأجر بشغل العقار المؤجر بهدوء وإرجاعه بالحالة التي استلمه عليها.')}</li>
+        <li>${tr('Toute prolongation au-delà de la date de départ pourra donner lieu à une facturation supplémentaire au tarif en vigueur.', 'كل تمديد بعد تاريخ الخروج قد يترتب عنه فوترة إضافية حسب التسعيرة المعمول بها.')}</li>
+        <li>${tr('Le locataire demeure responsable de toute dégradation causée au bien pendant la durée de la location.', 'يبقى المستأجر مسؤولا عن أي ضرر يلحق بالعقار خلال مدة الكراء.')}</li>
+        <li>${tr('Le présent contrat est établi en deux exemplaires originaux, un pour chaque partie.', 'حرر هذا العقد في نسختين أصليتين، نسخة لكل طرف.')}</li>
       </ol>
     </div>
 
     ${paymentsTable(r.payments)}
 
     <div class="sign-grid">
-      <div class="sign-box"><p class="who">Le Locataire</p><div class="line">${client ? `${client.firstName} ${client.lastName}` : 'Signature'}</div></div>
+      <div class="sign-box"><p class="who">${tr('Le Locataire', 'المستأجر')}</p><div class="line">${client ? `${client.firstName} ${client.lastName}` : tr('Signature', 'التوقيع')}</div></div>
       <div class="sign-box stamp-cell">
-        <p class="who">Cachet de l'agence</p>
+        <p class="who">${tr("Cachet de l'agence", 'ختم الوكالة')}</p>
         ${eStamp(store)}
       </div>
-      <div class="sign-box"><p class="who">Le Bailleur</p><div class="line">${store.name}</div></div>
+      <div class="sign-box"><p class="who">${tr('Le Bailleur', 'المؤجر')}</p><div class="line">${store.name}</div></div>
     </div>
 
-    <div class="foot">Document généré par ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — Merci de votre confiance.</div>
+    <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
   </div>`;
 }
 
@@ -1045,32 +1134,32 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
 
   return `
   <div class="doc compact">
-    ${docHeader(store, r.code, `Établi le ${formatDate(issueDate)}`, 'Bon de Versement')}
+    ${docHeader(store, r.code, `${tr('Établi le', 'حرر في')} ${formatDate(issueDate)}`, tr('Bon de Versement', 'وصل دفع'))}
 
     <div class="amount-hero">
-      <div class="lbl">Montant total versé</div>
+      <div class="lbl">${tr('Montant total versé', 'المبلغ الإجمالي المدفوع')}</div>
       <div class="val">${formatDA(paid)}</div>
-      <div class="words">Reçu de ${client ? `${client.firstName} ${client.lastName}` : 'la part du client'} la somme ci-dessus.</div>
+      <div class="words">${tr('Reçu de', 'استلمنا من')} ${client ? `${client.firstName} ${client.lastName}` : tr('la part du client', 'الزبون')} ${tr('la somme ci-dessus.', 'المبلغ المذكور أعلاه.')}</div>
     </div>
 
     <!-- Owner of the apartment + client who paid -->
     <div class="grid2">
       ${ownerSection(data, mainRoomId)}
-      ${clientSection(client, '👤 Versé par (Client)')}
+      ${clientSection(client, tr('👤 Versé par (Client)', '👤 دفع من طرف (الزبون)'))}
     </div>
 
     <div class="grid2">
       <div class="section violet">
-        <h3>📋 Location ${r.code}</h3>
-        <p><strong>Appartement(s) :</strong> ${roomsList || '—'}</p>
-        <p><strong>Séjour :</strong> ${formatDate(r.checkIn)} → ${formatDate(r.checkOut)}</p>
-        <p><strong>Durée :</strong> ${durationLabel(data, r)}</p>
+        <h3>📋 ${tr('Location', 'كراء')} ${r.code}</h3>
+        <p><strong>${tr('Appartement(s) :', 'الشقق :')}</strong> ${roomsList || '—'}</p>
+        <p><strong>${tr('Séjour :', 'الإقامة :')}</strong> ${formatDate(r.checkIn)} → ${formatDate(r.checkOut)}</p>
+        <p><strong>${tr('Durée :', 'المدة :')}</strong> ${durationLabel(data, r)}</p>
       </div>
       <div class="section green">
-        <h3>💰 Détail du montant</h3>
-        <p><strong>Loyer :</strong> ${formatDA(rentTotal)}</p>
-        ${fee > 0 ? `<p><strong>Frais d'agence :</strong> <span class="badge-fee">${formatDA(fee)}</span></p>` : ''}
-        <p><strong>Total location :</strong> ${formatDA(r.total)}</p>
+        <h3>💰 ${tr('Détail du montant', 'تفاصيل المبلغ')}</h3>
+        <p><strong>${tr('Loyer :', 'الإيجار :')}</strong> ${formatDA(rentTotal)}</p>
+        ${fee > 0 ? `<p><strong>${tr("Frais d'agence :", 'أتعاب الوكالة :')}</strong> <span class="badge-fee">${formatDA(fee)}</span></p>` : ''}
+        <p><strong>${tr('Total location :', 'مجموع الكراء :')}</strong> ${formatDA(r.total)}</p>
       </div>
     </div>
 
@@ -1079,14 +1168,14 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
     ${paymentsTable(r.payments)}
 
     <div class="totals-wrap">
-      <div class="row"><span>Loyer</span><span>${formatDA(rentTotal)}</span></div>
-      ${fee > 0 ? `<div class="row"><span>Frais d'agence</span><span class="badge-fee">${formatDA(fee)}</span></div>` : ''}
-      <div class="row"><span>Total location</span><strong>${formatDA(r.total)}</strong></div>
-      <div class="row"><span>Total versé</span><span class="badge-paid">${formatDA(paid)}</span></div>
-      <div class="row grand"><span>Reste dû</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
+      <div class="row"><span>${tr('Loyer', 'الإيجار')}</span><span>${formatDA(rentTotal)}</span></div>
+      ${fee > 0 ? `<div class="row"><span>${tr("Frais d'agence", 'أتعاب الوكالة')}</span><span class="badge-fee">${formatDA(fee)}</span></div>` : ''}
+      <div class="row"><span>${tr('Total location', 'مجموع الكراء')}</span><strong>${formatDA(r.total)}</strong></div>
+      <div class="row"><span>${tr('Total versé', 'مجموع المدفوع')}</span><span class="badge-paid">${formatDA(paid)}</span></div>
+      <div class="row grand"><span>${tr('Reste dû', 'الباقي')}</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
     </div>
 
-    ${stampSection(store, 'client')}
+    ${stampSection(store, tr('client', 'الزبون'))}
   </div>`;
 }
 
@@ -1105,111 +1194,6 @@ function numDate(iso?: string): string {
   return y && m && d ? `${d}/${m}/${y}` : iso;
 }
 
-/** Stand-alone styles of the termination letter (gold & brown charter). */
-const TERMINATION_STYLES = `
-  @page { size: A4; margin: 0; }
-  html, body { padding: 0 !important; margin: 0; background: #fff; }
-  .tm, .tm * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
-  .tm {
-    --gold: #b08d57; --gold-2: #e3cfa9; --gold-3: #f7f0e3; --brown: #4a3426; --ink: #2b2118; --muted: #6b5a4a;
-    position: relative; width: 210mm; min-height: 296mm; margin: 0 auto; overflow: hidden;
-    display: flex; flex-direction: column; background: #fdfcfa; color: var(--ink);
-    font-family: 'Segoe UI', 'Cairo', 'Tajawal', Tahoma, Arial, sans-serif; font-size: 12.5px; line-height: 1.45;
-  }
-  .tm[dir="rtl"] { font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 13px; }
-  .tm-corner-a { position: absolute; top: 0; inset-inline-start: 0; width: 64px; height: 64px; background: var(--brown); clip-path: polygon(0 0, 100% 0, 0 100%); }
-  .tm[dir="rtl"] .tm-corner-a { clip-path: polygon(0 0, 100% 0, 100% 100%); }
-  .tm-corner-b { position: absolute; top: 0; inset-inline-end: 0; width: 34px; height: 34px; background: var(--gold); clip-path: polygon(0 0, 100% 0, 100% 100%); }
-  .tm[dir="rtl"] .tm-corner-b { clip-path: polygon(0 0, 100% 0, 0 100%); }
-
-  /* Header: logo + agency identity | services & contact | legal ids */
-  .tm-head { display: grid; grid-template-columns: auto 1fr auto; gap: 18px; align-items: center;
-    padding: 22px 38px 12px; border-bottom: 2px solid var(--gold); }
-  .tm-brand { display: flex; align-items: center; gap: 12px; }
-  .tm-logo { width: 78px; height: 78px; display: grid; place-items: center; border-radius: 14px; background: #fff;
-    border: 1.5px solid var(--gold-2); overflow: hidden; flex-shrink: 0; }
-  .tm-logo img { max-width: 72px; max-height: 72px; object-fit: contain; }
-  .tm-logo svg { width: 64px; height: 50px; }
-  .tm-brand .nm { font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 700; letter-spacing: 1px;
-    color: var(--brown); line-height: 1.1; text-transform: uppercase; }
-  .tm-brand .desc { font-size: 11px; color: var(--gold); font-weight: 700; margin-top: 3px; }
-  .tm-brand .svc { font-size: 11px; color: var(--muted); font-weight: 600; margin-top: 2px; }
-  .tm-contact { font-size: 11px; color: var(--ink); justify-self: center; }
-  .tm-contact p, .tm-legal p { display: flex; gap: 6px; margin: 1.5px 0; white-space: nowrap; }
-  .tm-contact b, .tm-legal b { color: var(--gold); font-weight: 800; min-width: 44px; }
-  .tm-legal { font-size: 11px; padding-inline-start: 14px; border-inline-start: 2px solid var(--gold); }
-  .tm-legal .motto { font-family: 'Brush Script MT', 'Segoe Script', cursive; color: var(--brown); font-size: 15px; margin-top: 4px; direction: ltr; }
-
-  .tm-band { display: flex; justify-content: space-between; align-items: center; margin: 0 38px; padding: 6px 14px;
-    background: var(--gold-3); border: 1px solid var(--gold-2); border-top: 0; border-radius: 0 0 10px 10px; font-size: 11.5px; }
-  .tm-band b { color: var(--brown); }
-
-  .tm-title { text-align: center; margin-top: 14px; }
-  .tm-pill { display: inline-block; padding: 7px 40px; border-radius: 12px; color: #fff; font-size: 24px; font-weight: 800; letter-spacing: .5px;
-    background: linear-gradient(180deg, #c4a06a, var(--gold) 55%, #94703f); box-shadow: 0 3px 8px rgba(74,52,38,.25); }
-  .tm-agency { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 6px;
-    color: var(--brown); font-size: 15px; letter-spacing: 1.2px; font-weight: 800; }
-  .tm-agency::before, .tm-agency::after { content: ''; width: 110px; height: 1.5px; background: var(--gold-2); }
-
-  .tm-body { padding: 8px 38px 0; flex: 1; }
-  .tm-sec { margin-top: 10px; }
-  .tm-sec h3 { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 800; color: var(--brown); margin-bottom: 4px; }
-  .tm-sec h3::before { content: ''; width: 6px; height: 16px; border-radius: 3px; background: var(--gold); }
-  .tm-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; }
-  .tm-row { display: flex; align-items: flex-end; gap: 8px; margin: 5px 0; }
-  .tm-row .k { white-space: nowrap; font-weight: 700; color: var(--muted); }
-  .tm-fill { flex: 1; min-height: 20px; border-bottom: 1.4px dotted #8a7766; padding: 0 5px 1px; font-weight: 700; color: #1d1a16; }
-  .tm-check { display: flex; align-items: center; gap: 34px; margin: 6px 0; }
-  .tm-check .k { font-weight: 700; color: var(--muted); }
-  .tm-box { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
-  .tm-box i { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1.6px solid #3b3025;
-    border-radius: 3px; font-style: normal; font-size: 12px; line-height: 1; font-weight: 900; color: var(--brown); }
-  .tm-decl { margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--gold-3); border: 1px solid var(--gold-2); font-weight: 700; }
-  .tm-line { min-height: 22px; border-bottom: 1.4px dotted #8a7766; padding: 0 5px 1px; font-weight: 600; margin: 3px 0; }
-  .tm-closing { margin-top: 10px; font-weight: 800; }
-  .tm-made { width: 46%; margin-top: 8px; margin-inline-start: auto; }
-  .tm-made .tm-row { margin: 4px 0; }
-
-  .tm-signs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; padding: 12px 38px 0; align-items: start; }
-  .tm-sign { text-align: center; }
-  .tm-sign .who { font-weight: 800; font-size: 12.5px; margin-bottom: 6px; color: var(--brown); }
-  .tm-sign .frame { height: 84px; border: 1.6px solid var(--brown); border-radius: 10px; background: #fff; display: grid; place-items: center; }
-  .tm-sign .nm { margin-top: 3px; font-size: 11px; color: var(--muted); min-height: 15px; }
-  .tm .cachet-circle { width: 80px; height: 80px; }
-  .tm .cachet-circle .cc-ring { stroke: var(--brown); }
-  .tm .cachet-circle .cc-arc, .tm .cachet-circle .cc-star, .tm .cachet-circle .cc-center { fill: var(--brown); }
-  .tm .cachet-circle .cc-center-sub { fill: var(--gold); }
-  .tm .cachet-circle .cc-divider { stroke: var(--gold); }
-
-  .tm-watermark { position: absolute; inset-inline-end: 60px; bottom: 90px; width: 150px; opacity: .08; pointer-events: none; }
-  .tm-watermark svg { width: 150px; height: 58px; }
-
-  .tm-foot { position: relative; margin-top: 14px; height: 60px; flex-shrink: 0; }
-  .tm-foot .gold { position: absolute; inset-inline-start: 0; bottom: 48px; height: 4px; width: 72%; background: var(--gold); }
-  .tm-foot .band { position: absolute; inset-inline-start: 0; bottom: 0; height: 48px; width: 74%; background: var(--brown);
-    clip-path: polygon(0 0, 92% 0, 100% 100%, 0 100%); display: flex; align-items: center; gap: 16px;
-    padding-inline-start: 38px; color: #fff; font-size: 11px; font-weight: 600; }
-  .tm[dir="rtl"] .tm-foot .band { clip-path: polygon(8% 0, 100% 0, 100% 100%, 0 100%); }
-  .tm-foot .band span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-  .tm-foot .band strong { letter-spacing: 1px; }
-  .tm-foot .tag { position: absolute; inset-inline-end: 110px; bottom: 14px; font-family: 'Brush Script MT', 'Segoe Script', cursive;
-    font-size: 14px; color: var(--brown); direction: ltr; }
-  .tm-foot .corner { position: absolute; inset-inline-end: 0; bottom: 0; width: 96px; height: 60px; background: var(--brown);
-    clip-path: polygon(100% 0, 100% 100%, 0 100%); }
-  .tm[dir="rtl"] .tm-foot .corner { clip-path: polygon(0 0, 100% 100%, 0 100%); }
-`;
-
-/** Line-art house used when the agency has no logo (and as a watermark). */
-function houseSvg(stroke = '#b08d57', roof = '#4a3426'): string {
-  return `<svg viewBox="0 0 150 58" xmlns="http://www.w3.org/2000/svg">
-    <path d="M10 50 L75 8 L140 50" fill="none" stroke="${stroke}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M40 30 L75 8 L110 30" fill="none" stroke="${roof}" stroke-width="3" stroke-linejoin="round"/>
-    <rect x="108" y="14" width="8" height="16" fill="${roof}"/>
-    <rect x="66" y="26" width="18" height="16" fill="none" stroke="${roof}" stroke-width="2.5"/>
-    <path d="M75 26 V42 M66 34 H84" stroke="${roof}" stroke-width="2"/>
-  </svg>`;
-}
-
 const TERMINATION_TEXT = {
   fr: {
     title: 'Résiliation de Contrat de Location',
@@ -1222,7 +1206,7 @@ const TERMINATION_TEXT = {
     declare: 'Déclare vouloir résilier le contrat de location portant sur le bien désigné ci-dessous :',
     propSec: 'Bien loué & contrat', property: 'Bien :', location: 'Adresse du bien :', details: 'Caractéristiques :',
     concludedWith: 'Conclu avec M./Mme :', startDate: 'Date du contrat :', endDate: 'Échéance prévue :',
-    termDate: 'Date de résiliation :', rent: 'Loyer :',
+    termDate: 'Date de résiliation :', rent: 'Loyer :', datesSec: 'Dates du contrat',
     reasonsSec: 'Motifs de la résiliation', closing: "En conséquence, je vous prie de bien vouloir procéder aux formalités de résiliation du contrat de location conformément à la réglementation en vigueur.",
     madeAt: 'Fait à :', date: 'Le :',
     signTenant: 'Signature du locataire', signOwner: 'Signature du propriétaire', signAgency: "Cachet de l'agence",
@@ -1240,7 +1224,7 @@ const TERMINATION_TEXT = {
     declare: 'أصرح بأنني أرغب في فسخ عقد الإيجار الخاص بالمحل المذكور أدناه :',
     propSec: 'المحل المؤجر والعقد', property: 'المحل :', location: 'الكائن بـ :', details: 'المواصفات :',
     concludedWith: 'والمبرم مع السيد(ة) :', startDate: 'بتاريخ :', endDate: 'تاريخ الانتهاء المقرر :',
-    termDate: 'تاريخ الفسخ :', rent: 'مبلغ الإيجار :',
+    termDate: 'تاريخ الفسخ :', rent: 'مبلغ الإيجار :', datesSec: 'تواريخ العقد',
     reasonsSec: 'وذلك للأسباب التالية', closing: 'وعليه أطلب من طرفكم إتمام إجراءات فسخ عقد الإيجار وفقا للقوانين المعمول بها.',
     madeAt: 'حرر في :', date: 'التاريخ :',
     signTenant: 'توقيع المستأجر', signOwner: 'توقيع المالك', signAgency: 'ختم الوكالة',
@@ -1251,9 +1235,9 @@ const TERMINATION_TEXT = {
 
 /**
  * Printable termination letter (résiliation / فسخ عقد إيجار) in French or
- * Arabic, on the agency's gold & brown template: full agency identity (logo,
- * contact, legal ids), the requester (tenant or owner), the rented property and
- * contract, the reasons, place & date, and the three signature boxes.
+ * Arabic, on the same blue charter and frame as the rental contract: agency
+ * header, the requester (tenant or owner), the rented property and contract,
+ * the reasons, place & date, and the three signature boxes — on one A4 page.
  */
 export function buildTerminationHTML(
   data: AppData,
@@ -1261,98 +1245,60 @@ export function buildTerminationHTML(
   store: StoreInfo,
   lang: TerminationLang = 'ar',
 ): string {
-  const T = TERMINATION_TEXT[lang];
-  const esc = (v?: string) => escapeHtml(v ?? '');
-  const box = (on: boolean) => `<i>${on ? '✓' : ''}</i>`;
-  const row = (k: string, v: string, ltr = false) =>
-    `<div class="tm-row"><span class="k">${k}</span><span class="tm-fill">${ltr ? `<bdi dir="ltr">${v}</bdi>` : v}</span></div>`;
+  return withPrintLang(lang, () => {
+    const T = TERMINATION_TEXT[lang];
+    const esc = (v?: string) => escapeHtml(v ?? '');
+    const box = (on: boolean) => `<i>${on ? '✓' : ''}</i>`;
+    const row = (k: string, v: string, ltr = false) =>
+      `<div class="tm-row"><span class="k">${k}</span><span class="tm-fill">${ltr ? `<bdi dir="ltr">${v}</bdi>` : v}</span></div>`;
 
-  const client = clientById(data, r.clientId);
-  const owner = ownerData(data, r.rooms[0]?.roomId);
-  const tenantName = client ? `${client.firstName} ${client.lastName}` : '';
-  const sep = lang === 'ar' ? '، ' : ', ';
-  const byOwner = r.terminatedBy === 'owner';
+    const client = clientById(data, r.clientId);
+    const owner = ownerData(data, r.rooms[0]?.roomId);
+    const tenantName = client ? `${client.firstName} ${client.lastName}` : '';
+    const sep = lang === 'ar' ? '، ' : ', ';
+    const byOwner = r.terminatedBy === 'owner';
 
-  // The signer is the party requesting the termination; the contract was
-  // concluded with the other party.
-  const signer = byOwner
-    ? {
-        name: owner.name,
-        phone: [owner.phone, owner.phone2].filter(Boolean).join(' / '),
-        address: [owner.address, owner.city].filter(Boolean).join(sep),
-        doc: owner.docNumber ? `${owner.docNumber} (${docTypeLabel(owner.docType)})` : '',
-      }
-    : {
-        name: tenantName,
-        phone: [client?.phone, client?.phone2].filter(Boolean).join(' / '),
-        address: [client?.address, client?.city].filter(Boolean).join(sep),
-        doc: client?.documentNumber ? `${client.documentNumber} (${docTypeLabel(client.documentType)})` : '',
-      };
-  const counterparty = byOwner ? tenantName : owner.name;
+    // The signer is the party requesting the termination; the contract was
+    // concluded with the other party.
+    const signer = byOwner
+      ? {
+          name: owner.name,
+          phone: [owner.phone, owner.phone2].filter(Boolean).join(' / '),
+          address: [owner.address, owner.city].filter(Boolean).join(sep),
+          doc: owner.docNumber ? `${owner.docNumber} (${docTypeLabel(owner.docType)})` : '',
+        }
+      : {
+          name: tenantName,
+          phone: [client?.phone, client?.phone2].filter(Boolean).join(' / '),
+          address: [client?.address, client?.city].filter(Boolean).join(sep),
+          doc: client?.documentNumber ? `${client.documentNumber} (${docTypeLabel(client.documentType)})` : '',
+        };
+    const counterparty = byOwner ? tenantName : owner.name;
 
-  const rooms = r.rooms.map((rr) => ({ rr, room: data.rooms.find((x) => x.id === rr.roomId) }));
-  const propertyNames = rooms.map(({ room }) => room?.name).filter(Boolean).join(sep);
-  const propertyPlace = [...new Set(rooms.map(({ room }) => room?.commune).filter(Boolean))].join(sep);
-  const first = rooms[0]?.room;
-  const floor = first ? data.floors.find((f) => f.id === first.floorId)?.name : '';
-  const details = first
-    ? [
-        `${first.capacity} ${T.rooms}`,
-        floor && `${T.floor} ${floor}`,
-        first.furnished ? T.furnished : T.unfurnished,
-      ].filter(Boolean).join(' · ')
-    : '';
-  const monthly = reservationPeriod(data, r) === 'month';
-  const rent = r.rooms.reduce((s, rr) => s + rr.pricePerNight, 0);
+    const rooms = r.rooms.map((rr) => ({ rr, room: data.rooms.find((x) => x.id === rr.roomId) }));
+    const propertyNames = rooms.map(({ room }) => room?.name).filter(Boolean).join(sep);
+    const propertyPlace = [...new Set(rooms.map(({ room }) => room?.commune).filter(Boolean))].join(sep);
+    const first = rooms[0]?.room;
+    const floor = first ? data.floors.find((f) => f.id === first.floorId)?.name : '';
+    const details = first
+      ? [
+          `${first.capacity} ${T.rooms}`,
+          floor && `${T.floor} ${floor}`,
+          first.furnished ? T.furnished : T.unfurnished,
+        ].filter(Boolean).join(' · ')
+      : '';
+    const monthly = reservationPeriod(data, r) === 'month';
+    const rent = r.rooms.reduce((s, rr) => s + rr.pricePerNight, 0);
 
-  const reasons = (r.terminationReason ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const reasonLines = reasons.length >= 3 ? reasons : [...reasons, '', '', ''].slice(0, 3);
+    const reasons = (r.terminationReason ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const reasonLines = reasons.length >= 3 ? reasons : [...reasons, '', '', ''].slice(0, 3);
 
-  const logo = store.logo ? `<img src="${store.logo}" alt="logo" />` : houseSvg();
-  const contact = [
-    store.address && `<p><b>${T.address}</b><span>${esc(store.address)}</span></p>`,
-    store.phone && `<p><b>${T.phone}</b><bdi dir="ltr">${esc(store.phone)}</bdi></p>`,
-    store.email && `<p><b>${T.email}</b><span>${esc(store.email)}</span></p>`,
-  ].filter(Boolean).join('');
-  const legal = [
-    store.rc && `<p><b>RC</b><span>${esc(store.rc)}</span></p>`,
-    store.nif && `<p><b>NIF</b><span>${esc(store.nif)}</span></p>`,
-    store.nis && `<p><b>NIS</b><span>${esc(store.nis)}</span></p>`,
-    store.article && `<p><b>Art</b><span>${esc(store.article)}</span></p>`,
-  ].filter(Boolean).join('');
+    return `
+  <div class="doc compact">
+    ${docHeader(store, r.code, `${T.issued} ${numDate(r.terminationDate)}`, T.title)}
 
-  const pin = `<svg width="13" height="16" viewBox="0 0 24 30" fill="#d4b483"><path d="M12 0C5.4 0 0 5.2 0 11.7 0 20.4 12 30 12 30s12-9.6 12-18.3C24 5.2 18.6 0 12 0zm0 16.5a4.8 4.8 0 110-9.6 4.8 4.8 0 010 9.6z"/></svg>`;
-
-  return `
-  <style>${TERMINATION_STYLES}</style>
-  <div class="tm" dir="${lang === 'ar' ? 'rtl' : 'ltr'}" lang="${lang}">
-    <div class="tm-corner-a"></div>
-    <div class="tm-corner-b"></div>
-
-    <div class="tm-head">
-      <div class="tm-brand">
-        <div class="tm-logo">${logo}</div>
-        <div>
-          <div class="nm">${esc(store.name)}</div>
-          ${store.description ? `<div class="desc">${esc(store.description)}</div>` : `<div class="desc">${T.agency}</div>`}
-          <div class="svc">${T.services}</div>
-        </div>
-      </div>
-      <div class="tm-contact">${contact}</div>
-      <div class="tm-legal">${legal}<div class="motto">Votre confiance, notre priorité</div></div>
-    </div>
-    <div class="tm-band">
-      <span>${T.docNo} : <b><bdi dir="ltr">${esc(r.code)}</bdi></b></span>
-      <span>${T.issued} : <b><bdi dir="ltr">${numDate(r.terminationDate)}</bdi></b></span>
-    </div>
-
-    <div class="tm-title">
-      <span class="tm-pill">${T.title}</span>
-      <div class="tm-agency"><span>${T.agency} — ${esc((store.name || '').toUpperCase())}</span></div>
-    </div>
-
-    <div class="tm-body">
-      <div class="tm-sec">
+    <div class="grid2">
+      <div class="party">
         <h3>${T.signerSec}</h3>
         ${row(T.fullName, esc(signer.name))}
         <div class="tm-check">
@@ -1360,63 +1306,53 @@ export function buildTerminationHTML(
           <span class="tm-box">${box(!byOwner)} ${T.tenant}</span>
           <span class="tm-box">${box(byOwner)} ${T.owner}</span>
         </div>
-        <div class="tm-grid">
-          ${row(T.tel, esc(signer.phone), true)}
-          ${row(T.idDoc, esc(signer.doc))}
-        </div>
+        ${row(T.tel, esc(signer.phone), true)}
+        ${row(T.idDoc, esc(signer.doc))}
         ${row(T.addr, esc(signer.address))}
       </div>
-
-      <p class="tm-decl">${T.declare}</p>
-
-      <div class="tm-sec">
+      <div class="party">
         <h3>${T.propSec}</h3>
-        <div class="tm-grid">
-          ${row(T.property, esc(propertyNames))}
-          ${row(T.location, esc(propertyPlace))}
-        </div>
-        <div class="tm-grid">
-          ${row(T.details, esc(details))}
-          ${row(T.rent, `${formatDA(rent)} ${monthly ? T.perMonth : T.perNight}`, true)}
-        </div>
+        ${row(T.property, esc(propertyNames))}
+        ${row(T.location, esc(propertyPlace))}
+        ${row(T.details, esc(details))}
+        ${row(T.rent, `${formatDA(rent)} ${monthly ? T.perMonth : T.perNight}`, true)}
         ${row(T.concludedWith, esc(counterparty))}
-        <div class="tm-grid">
-          ${row(T.startDate, numDate(r.checkIn), true)}
-          ${row(T.endDate, numDate(r.checkOut), true)}
-        </div>
-        ${row(T.termDate, numDate(r.terminationDate), true)}
-      </div>
-
-      <div class="tm-sec">
-        <h3>${T.reasonsSec}</h3>
-        ${reasonLines.map((l) => `<div class="tm-line">${esc(l)}</div>`).join('')}
-      </div>
-
-      <p class="tm-closing">${T.closing}</p>
-
-      <div class="tm-made">
-        ${row(T.madeAt, esc(r.terminationPlace))}
-        ${row(T.date, numDate(r.terminationDate), true)}
       </div>
     </div>
 
-    <div class="tm-signs">
-      <div class="tm-sign"><p class="who">${T.signTenant}</p><div class="frame"></div><p class="nm">${esc(tenantName)}</p></div>
-      <div class="tm-sign"><p class="who">${T.signAgency}</p><div class="frame">${eStamp(store)}</div><p class="nm">${esc(store.name)}</p></div>
-      <div class="tm-sign"><p class="who">${T.signOwner}</p><div class="frame"></div><p class="nm">${esc(owner.name)}</p></div>
-    </div>
+    <p class="tm-decl">${T.declare}</p>
 
-    <div class="tm-watermark">${houseSvg('#8a7a6a', '#8a7a6a')}</div>
-
-    <div class="tm-foot">
-      <div class="gold"></div>
-      <div class="band">
-        <span>${pin}<strong>${esc((store.name || '').toUpperCase())}</strong></span>
-        ${store.address ? `<span>${esc(store.address)}</span>` : ''}
-        ${store.phone ? `<span><bdi dir="ltr">${esc(store.phone)}</bdi></span>` : ''}
+    <div class="section green" style="margin-bottom:9px">
+      <h3>📅 ${T.datesSec}</h3>
+      <div class="tm-grid">
+        ${row(T.startDate, numDate(r.checkIn), true)}
+        ${row(T.endDate, numDate(r.checkOut), true)}
       </div>
-      <div class="tag">Ensemble pour vos projets immobiliers</div>
-      <div class="corner"></div>
+      ${row(T.termDate, numDate(r.terminationDate), true)}
     </div>
+
+    <div class="section blue" style="margin-bottom:9px">
+      <h3>📝 ${T.reasonsSec}</h3>
+      ${reasonLines.map((l) => `<div class="tm-line">${esc(l)}</div>`).join('')}
+    </div>
+
+    <p class="tm-closing">${T.closing}</p>
+
+    <div class="tm-made">
+      ${row(T.madeAt, esc(r.terminationPlace))}
+      ${row(T.date, numDate(r.terminationDate), true)}
+    </div>
+
+    <div class="sign-grid">
+      <div class="sign-box"><p class="who">${T.signTenant}</p><div class="line">${esc(tenantName) || '&nbsp;'}</div></div>
+      <div class="sign-box stamp-cell">
+        <p class="who">${T.signAgency}</p>
+        ${eStamp(store)}
+      </div>
+      <div class="sign-box"><p class="who">${T.signOwner}</p><div class="line">${esc(owner.name) || '&nbsp;'}</div></div>
+    </div>
+
+    <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${esc(store.name)}${store.phone ? ` — <span class="tel">${esc(store.phone)}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
   </div>`;
+  });
 }

@@ -20,7 +20,7 @@ import { mediatorStats } from '@/store/selectors';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, initials } from '@/lib/utils';
 import { roomName } from '@/lib/lookups';
-import { buildMediatorPaymentReceiptHTML, printHTML } from '@/lib/print';
+import { buildMediatorPaymentReceiptHTML, printDoc } from '@/lib/print';
 import type { Mediator, Payment } from '@/types';
 
 export default function Mediateurs() {
@@ -331,7 +331,7 @@ function MediatorPaymentModal({ mediator, onClose }: { mediator: Mediator | null
       <PrintPrompt
         open={!!printAsk}
         onClose={() => setPrintAsk(null)}
-        onConfirm={() => { if (printAsk) printHTML(`commission-${printAsk.mediator.lastName}`, buildMediatorPaymentReceiptHTML(data, printAsk.mediator, printAsk.payment, storeInfo)); }}
+        onConfirm={() => { if (printAsk) printDoc(`commission-${printAsk.mediator.lastName}`, () => buildMediatorPaymentReceiptHTML(data, printAsk.mediator, printAsk.payment, storeInfo)); }}
         title={t('mediators.receiptTitle')}
         message={t('mediators.askPrintPayment')}
       />

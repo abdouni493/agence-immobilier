@@ -13,7 +13,7 @@ import { GradientButton } from '@/components/ui/GradientButton';
 import { SectionCard } from '@/components/ui/GradientCard';
 import { TextField, SelectField } from '@/components/ui/Field';
 import { caisseRecap, saleRemaining, purchaseRemaining, mediatorRemaining, reservationRemaining } from '@/store/selectors';
-import { printHTML, buildZakatReportHTML } from '@/lib/print';
+import { printDoc, buildZakatReportHTML } from '@/lib/print';
 import { todayISO } from '@/lib/utils';
 import {
   computeZakat, emptyZakatInputs, formatDZD, parseAmount, zakatYearRange,
@@ -127,7 +127,7 @@ export default function Zakat() {
 
   const print = () => {
     const r = result ?? preview;
-    printHTML(t('zakat.title'), buildZakatReportHTML(storeInfo, parsed.inputs, r, year));
+    printDoc(t('zakat.title'), () => buildZakatReportHTML(storeInfo, parsed.inputs, r, year));
   };
 
   const shown = result ?? preview;

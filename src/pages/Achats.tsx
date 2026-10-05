@@ -21,7 +21,7 @@ import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate } from '@/lib/utils';
 import { clientName, clientById, roomName, roomLocation } from '@/lib/lookups';
 import {
-  buildPurchaseInvoiceHTML, buildPurchasePaymentReceiptHTML, printHTML,
+  buildPurchaseInvoiceHTML, buildPurchasePaymentReceiptHTML, printDoc,
 } from '@/lib/print';
 import type { Purchase, Payment } from '@/types';
 
@@ -79,7 +79,7 @@ export default function Achats() {
 
   const openCreate = () => { setEditing(null); setWizardOpen(true); };
   const openEdit = (p: Purchase) => { setEditing(p); setWizardOpen(true); };
-  const printInvoice = (p: Purchase) => printHTML(p.code, buildPurchaseInvoiceHTML(data, p, storeInfo));
+  const printInvoice = (p: Purchase) => printDoc(p.code, () => buildPurchaseInvoiceHTML(data, p, storeInfo));
 
   const canDelete = can(perms, 'achats', 'delete');
 
@@ -447,7 +447,7 @@ function PurchasePaymentModal({ purchase, onClose }: { purchase: Purchase | null
       <PrintPrompt
         open={!!printAsk}
         onClose={() => setPrintAsk(null)}
-        onConfirm={() => { if (printAsk) printHTML(`${printAsk.purchase.code}-recu`, buildPurchasePaymentReceiptHTML(data, printAsk.purchase, printAsk.payment, storeInfo)); }}
+        onConfirm={() => { if (printAsk) printDoc(`${printAsk.purchase.code}-recu`, () => buildPurchasePaymentReceiptHTML(data, printAsk.purchase, printAsk.payment, storeInfo)); }}
         title={t('purchases.receiptTitle')}
         message={t('purchases.askPrintPayment')}
       />

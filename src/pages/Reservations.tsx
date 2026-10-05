@@ -29,7 +29,7 @@ import { formatDA, formatDate, formatDateLong, rangesOverlap, todayISO, addDaysI
 import { reservationPeriod, rentalPeriodOf } from '@/lib/lookups';
 import { useToday } from '@/lib/useToday';
 import { clientName, reservationRoomLabels, clientById } from '@/lib/lookups';
-import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVersementHTML, buildTerminationHTML, printHTML, type TerminationLang } from '@/lib/print';
+import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVersementHTML, buildTerminationHTML, printDoc, printHTML, type TerminationLang } from '@/lib/print';
 import type { Reservation, Payment, TerminationParty } from '@/types';
 
 type PrintKind = 'contract' | 'versement' | 'termination';
@@ -151,14 +151,14 @@ export default function Reservations() {
   // Printing a rental first asks the user which document to produce.
   const askPrint = (r: Reservation) => setPrintChoice(r);
   const doPrint = (r: Reservation, kind: PrintKind) => {
-    if (kind === 'contract') printHTML(`${r.code}-contrat`, buildRentalContractHTML(data, r, storeInfo));
+    if (kind === 'contract') printDoc(`${r.code}-contrat`, () => buildRentalContractHTML(data, r, storeInfo));
     else if (kind === 'termination') { setPrintChoice(null); setTermLangFor(r); return; }
-    else printHTML(`${r.code}-versement`, buildVersementHTML(data, r, storeInfo));
+    else printDoc(`${r.code}-versement`, () => buildVersementHTML(data, r, storeInfo));
     setPrintChoice(null);
   };
 
   const printTerminationIn = (r: Reservation, l: TerminationLang) => {
-    printHTML(`${r.code}-resiliation-${l}`, buildTerminationHTML(data, r, storeInfo, l));
+    printHTML(`${r.code}-resiliation-${l}`, buildTerminationHTML(data, r, storeInfo, l), l);
     setTermLangFor(null);
   };
 
@@ -1242,7 +1242,7 @@ function PaymentModal({ reservation, onClose }: { reservation: Reservation | nul
       <PrintPrompt
         open={!!printAsk}
         onClose={() => setPrintAsk(null)}
-        onConfirm={() => { if (printAsk) printHTML(`${printAsk.reservation.code}-recu`, buildReservationPaymentReceiptHTML(data, printAsk.reservation, printAsk.payment, storeInfo)); }}
+        onConfirm={() => { if (printAsk) printDoc(`${printAsk.reservation.code}-recu`, () => buildReservationPaymentReceiptHTML(data, printAsk.reservation, printAsk.payment, storeInfo)); }}
         title={t('sales.receiptTitle')}
         message={t('sales.askPrintPayment')}
       />

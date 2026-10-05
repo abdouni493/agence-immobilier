@@ -16,7 +16,7 @@ import { TextField, TextArea, SelectField } from '@/components/ui/Field';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, todayISO, addDaysISO } from '@/lib/utils';
 import { expenseCategoryName, roomName } from '@/lib/lookups';
-import { printHTML, buildExpensesReportHTML } from '@/lib/print';
+import { printDoc, buildExpensesReportHTML } from '@/lib/print';
 import type { Expense, Maintenance } from '@/types';
 
 export default function Expenses() {
@@ -81,11 +81,11 @@ export default function Expenses() {
   }, [inRangeExpenses, data.expenseCategories]);
 
   const print = () => {
-    printHTML(
-      t('expenses.printTitle'),
-      buildExpensesReportHTML(data, storeInfo, from, to, catFilter === 'all' ? undefined : catFilter),
-    );
     setPrintOpen(false);
+    printDoc(
+      t('expenses.printTitle'),
+      () => buildExpensesReportHTML(data, storeInfo, from, to, catFilter === 'all' ? undefined : catFilter),
+    );
   };
 
   return (

@@ -21,7 +21,7 @@ import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, cn } from '@/lib/utils';
 import { clientName, clientById, roomName, mediatorName, roomLocation } from '@/lib/lookups';
 import {
-  buildSaleInvoiceHTML, buildSalePaymentReceiptHTML, printHTML,
+  buildSaleInvoiceHTML, buildSalePaymentReceiptHTML, printDoc,
 } from '@/lib/print';
 import type { Sale, Payment } from '@/types';
 
@@ -79,7 +79,7 @@ export default function Ventes() {
 
   const openCreate = () => { setEditing(null); setWizardOpen(true); };
   const openEdit = (s: Sale) => { setEditing(s); setWizardOpen(true); };
-  const printInvoice = (s: Sale) => printHTML(s.code, buildSaleInvoiceHTML(data, s, storeInfo));
+  const printInvoice = (s: Sale) => printDoc(s.code, () => buildSaleInvoiceHTML(data, s, storeInfo));
 
   const canDelete = can(perms, 'ventes', 'delete');
 
@@ -453,7 +453,7 @@ function SalePaymentModal({ sale, onClose }: { sale: Sale | null; onClose: () =>
       <PrintPrompt
         open={!!printAsk}
         onClose={() => setPrintAsk(null)}
-        onConfirm={() => { if (printAsk) printHTML(`${printAsk.sale.code}-recu`, buildSalePaymentReceiptHTML(data, printAsk.sale, printAsk.payment, storeInfo)); }}
+        onConfirm={() => { if (printAsk) printDoc(`${printAsk.sale.code}-recu`, () => buildSalePaymentReceiptHTML(data, printAsk.sale, printAsk.payment, storeInfo)); }}
         title={t('sales.receiptTitle')}
         message={t('sales.askPrintPayment')}
       />

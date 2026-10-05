@@ -5,6 +5,7 @@ import { PanelLeftOpen } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useI18n } from '@/i18n';
+import { PrintLangHost } from '@/components/ui/PrintLangHost';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -100,6 +101,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <div className="mx-auto max-w-7xl">{children}</div>
         </main>
       </div>
+      <PrintLangHost />
     </div>
   );
 }

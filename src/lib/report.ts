@@ -9,7 +9,8 @@ import {
   type CaisseRecap,
 } from '@/store/selectors';
 import { nightsBetween } from './utils';
-import { formatDA, formatDate, todayISO } from './utils';
+import { formatDA, todayISO, formatDate as fmtDate } from './utils';
+import { tr } from './print';
 import { clientName, roomName, serviceName, expenseCategoryName, mediatorName } from './lookups';
 
 export interface ReportData {
@@ -221,6 +222,7 @@ export function buildReportData(data: AppData, from: string, to: string): Report
 }
 
 export function buildReportHTML(data: AppData, rep: ReportData, store: StoreInfo, from: string, to: string): string {
+  const formatDate = (iso: string) => fmtDate(iso, tr('fr', 'ar') as 'fr' | 'ar');
   const row = (a: string, b: string) => `<div class="row"><span>${a}</span><span>${b}</span></div>`;
   const resRows = rep.reservations.list
     .slice(0, 40)
@@ -230,88 +232,88 @@ export function buildReportHTML(data: AppData, rep: ReportData, store: StoreInfo
     .join('');
 
   return `
-  <div class="doc">
+  <div class="doc compact">
     <div class="head">
       <div class="brand"><div class="logo">${store.name.charAt(0)}</div>
-        <div><h1>${store.name}</h1><p>Rapport d'activité</p><p>${formatDate(from)} → ${formatDate(to)}</p></div></div>
+        <div><h1>${store.name}</h1><p>${tr("Rapport d'activité", 'تقرير النشاط')}</p><p>${formatDate(from)} → ${formatDate(to)}</p></div></div>
       <div class="legal"><div><strong>NIF:</strong> ${store.nif}</div><div><strong>RC:</strong> ${store.rc}</div></div>
     </div>
 
-    <div class="title"><h2>1. Résumé exécutif</h2></div>
+    <div class="title"><h2>${tr('1. Résumé exécutif', '1. الملخص التنفيذي')}</h2></div>
     <div class="totals" style="width:100%">
-      ${row('Recettes totales', formatDA(rep.totalRevenue))}
-      ${row('Dépenses totales', formatDA(rep.totalExpenses))}
-      ${row('Gain net', formatDA(rep.netGain))}
-      ${row("Taux d'occupation moyen", rep.avgOccupancy + '%')}
+      ${row(tr('Recettes totales', 'مجموع الإيرادات'), formatDA(rep.totalRevenue))}
+      ${row(tr('Dépenses totales', 'مجموع المصاريف'), formatDA(rep.totalExpenses))}
+      ${row(tr('Gain net', 'الربح الصافي'), formatDA(rep.netGain))}
+      ${row(tr("Taux d'occupation moyen", 'متوسط نسبة الإشغال'), rep.avgOccupancy + '%')}
     </div>
 
-    <div class="title"><h2>2. Réservations (${rep.reservations.total})</h2></div>
-    <p style="margin-bottom:8px">Payées: ${rep.reservations.paid} · Dettes: ${rep.reservations.debt} · Annulées: ${rep.reservations.cancelled}</p>
-    <table><thead><tr><th>Code</th><th>Client</th><th>Arrivée</th><th class="right">Nuits</th><th class="right">Total</th><th class="right">Payé</th></tr></thead><tbody>${resRows}</tbody></table>
+    <div class="title"><h2>${tr('2. Réservations', '2. الحجوزات')} (${rep.reservations.total})</h2></div>
+    <p style="margin-bottom:8px">${tr('Payées', 'مدفوعة')}: ${rep.reservations.paid} · ${tr('Dettes', 'ديون')}: ${rep.reservations.debt} · ${tr('Annulées', 'ملغاة')}: ${rep.reservations.cancelled}</p>
+    <table><thead><tr><th>${tr('Code', 'الرمز')}</th><th>${tr('Client', 'الزبون')}</th><th>${tr('Arrivée', 'الدخول')}</th><th class="right">${tr('Nuits', 'الليالي')}</th><th class="right">${tr('Total', 'المجموع')}</th><th class="right">${tr('Payé', 'المدفوع')}</th></tr></thead><tbody>${resRows}</tbody></table>
 
-    <div class="title"><h2>3. Ventes (${rep.sales.count})</h2></div>
+    <div class="title"><h2>${tr('3. Ventes', '3. المبيعات')} (${rep.sales.count})</h2></div>
     <div class="totals" style="width:100%">
-      ${row('Valeur totale des ventes', formatDA(rep.sales.totalValue))}
-      ${row('Encaissé sur la période', formatDA(rep.sales.collected))}
-      ${row('Dettes ventes', formatDA(rep.sales.debts))}
+      ${row(tr('Valeur totale des ventes', 'القيمة الإجمالية للمبيعات'), formatDA(rep.sales.totalValue))}
+      ${row(tr('Encaissé sur la période', 'المحصل خلال الفترة'), formatDA(rep.sales.collected))}
+      ${row(tr('Dettes ventes', 'ديون المبيعات'), formatDA(rep.sales.debts))}
     </div>
-    <table><thead><tr><th>Code</th><th>Appartement</th><th>Acheteur</th><th class="right">Prix</th><th class="right">Payé</th></tr></thead><tbody>
+    <table><thead><tr><th>${tr('Code', 'الرمز')}</th><th>${tr('Appartement', 'الشقة')}</th><th>${tr('Acheteur', 'المشتري')}</th><th class="right">${tr('Prix', 'السعر')}</th><th class="right">${tr('Payé', 'المدفوع')}</th></tr></thead><tbody>
       ${rep.sales.list.slice(0, 30).map((s) => `<tr><td>${s.code}</td><td>${roomName(data, s.roomId)}</td><td>${clientName(data, s.clientId)}</td><td class="right">${formatDA(s.price)}</td><td class="right">${formatDA(salePaid(s))}</td></tr>`).join('') || '<tr><td colspan="5">—</td></tr>'}
     </tbody></table>
 
-    <div class="title"><h2>4. Achats (${rep.purchases.count})</h2></div>
+    <div class="title"><h2>${tr('4. Achats', '4. المشتريات')} (${rep.purchases.count})</h2></div>
     <div class="totals" style="width:100%">
-      ${row('Coût total des achats', formatDA(rep.purchases.totalCost))}
-      ${row('Payé aux vendeurs', formatDA(rep.purchases.paid))}
-      ${row('Reste dû aux vendeurs', formatDA(rep.purchases.remaining))}
-      ${row('Marge prévue (revente)', formatDA(rep.purchases.plannedMargin))}
+      ${row(tr('Coût total des achats', 'التكلفة الإجمالية للمشتريات'), formatDA(rep.purchases.totalCost))}
+      ${row(tr('Payé aux vendeurs', 'المدفوع للبائعين'), formatDA(rep.purchases.paid))}
+      ${row(tr('Reste dû aux vendeurs', 'الباقي للبائعين'), formatDA(rep.purchases.remaining))}
+      ${row(tr('Marge prévue (revente)', 'الهامش المتوقع (إعادة البيع)'), formatDA(rep.purchases.plannedMargin))}
     </div>
-    <table><thead><tr><th>Code</th><th>Appartement</th><th>Vendeur</th><th class="right">Prix achat</th><th class="right">Payé</th></tr></thead><tbody>
+    <table><thead><tr><th>${tr('Code', 'الرمز')}</th><th>${tr('Appartement', 'الشقة')}</th><th>${tr('Vendeur', 'البائع')}</th><th class="right">${tr('Prix achat', 'سعر الشراء')}</th><th class="right">${tr('Payé', 'المدفوع')}</th></tr></thead><tbody>
       ${rep.purchases.list.slice(0, 30).map((p) => `<tr><td>${p.code}</td><td>${roomName(data, p.roomId)}</td><td>${clientName(data, p.clientId)}</td><td class="right">${formatDA(p.purchasePrice)}</td><td class="right">${formatDA(purchasePaid(p))}</td></tr>`).join('') || '<tr><td colspan="5">—</td></tr>'}
     </tbody></table>
 
-    <div class="title"><h2>5. Médiateurs</h2></div>
+    <div class="title"><h2>${tr('5. Médiateurs', '5. الوسطاء')}</h2></div>
     <div class="totals" style="width:100%">
-      ${row('Commissions générées', formatDA(rep.mediators.commissionsEarned))}
-      ${row('Commissions payées (période)', formatDA(rep.mediators.commissionsPaid))}
-      ${row('Commissions dues', formatDA(rep.mediators.commissionsOwed))}
+      ${row(tr('Commissions générées', 'العمولات المحققة'), formatDA(rep.mediators.commissionsEarned))}
+      ${row(tr('Commissions payées (période)', 'العمولات المدفوعة (الفترة)'), formatDA(rep.mediators.commissionsPaid))}
+      ${row(tr('Commissions dues', 'العمولات المستحقة'), formatDA(rep.mediators.commissionsOwed))}
     </div>
-    <table><thead><tr><th>Médiateur</th><th class="right">Ventes</th><th class="right">Gagné</th><th class="right">Dû</th></tr></thead><tbody>
+    <table><thead><tr><th>${tr('Médiateur', 'الوسيط')}</th><th class="right">${tr('Ventes', 'المبيعات')}</th><th class="right">${tr('Gagné', 'المكتسب')}</th><th class="right">${tr('Dû', 'المستحق')}</th></tr></thead><tbody>
       ${rep.mediators.top.map((m) => `<tr><td>${m.name}</td><td class="right">${m.count}</td><td class="right">${formatDA(m.earned)}</td><td class="right">${formatDA(m.owed)}</td></tr>`).join('') || '<tr><td colspan="4">—</td></tr>'}
     </tbody></table>
 
-    <div class="title"><h2>6. Clients</h2></div>
-    <p>Nouveaux clients: ${rep.clients.newCount} · Dettes en cours: ${formatDA(rep.clients.totalDebt)}</p>
-    <table><thead><tr><th>Top clients</th><th class="right">Chiffre d'affaires</th></tr></thead><tbody>
+    <div class="title"><h2>${tr('6. Clients', '6. الزبائن')}</h2></div>
+    <p>${tr('Nouveaux clients', 'زبائن جدد')}: ${rep.clients.newCount} · ${tr('Dettes en cours', 'الديون الجارية')}: ${formatDA(rep.clients.totalDebt)}</p>
+    <table><thead><tr><th>${tr('Top clients', 'أفضل الزبائن')}</th><th class="right">${tr("Chiffre d'affaires", 'رقم الأعمال')}</th></tr></thead><tbody>
       ${rep.clients.top.map((c) => `<tr><td>${c.name}</td><td class="right">${formatDA(c.total)}</td></tr>`).join('')}
     </tbody></table>
 
-    <div class="title"><h2>7. Appartements</h2></div>
-    <p>Appartement le plus rentable: ${rep.rooms.mostProfitable ? `${rep.rooms.mostProfitable.name} (${formatDA(rep.rooms.mostProfitable.revenue)})` : '—'} · Maintenances: ${formatDA(rep.rooms.maintTotal)}</p>
+    <div class="title"><h2>${tr('7. Appartements', '7. الشقق')}</h2></div>
+    <p>${tr('Appartement le plus rentable', 'الشقة الأكثر ربحا')}: ${rep.rooms.mostProfitable ? `${rep.rooms.mostProfitable.name} (${formatDA(rep.rooms.mostProfitable.revenue)})` : '—'} · ${tr('Maintenances', 'الصيانة')}: ${formatDA(rep.rooms.maintTotal)}</p>
 
-    <div class="title"><h2>8. Services</h2></div>
-    <table><thead><tr><th>Service</th><th class="right">Quantité</th><th class="right">CA</th></tr></thead><tbody>
+    <div class="title"><h2>${tr('8. Services', '8. الخدمات')}</h2></div>
+    <table><thead><tr><th>${tr('Service', 'الخدمة')}</th><th class="right">${tr('Quantité', 'الكمية')}</th><th class="right">${tr('CA', 'رقم الأعمال')}</th></tr></thead><tbody>
       ${rep.services.sold.map((s) => `<tr><td>${s.name}</td><td class="right">${s.qty}</td><td class="right">${formatDA(s.revenue)}</td></tr>`).join('') || '<tr><td colspan="3">—</td></tr>'}
     </tbody></table>
 
-    <div class="title"><h2>9. Dépenses (${formatDA(rep.expensesDetail.total)})</h2></div>
-    <table><thead><tr><th>Catégorie</th><th class="right">Montant</th></tr></thead><tbody>
+    <div class="title"><h2>${tr('9. Dépenses', '9. المصاريف')} (${formatDA(rep.expensesDetail.total)})</h2></div>
+    <table><thead><tr><th>${tr('Catégorie', 'الفئة')}</th><th class="right">${tr('Montant', 'المبلغ')}</th></tr></thead><tbody>
       ${rep.expensesDetail.byCategory.map((c) => `<tr><td>${c.name}</td><td class="right">${formatDA(c.total)}</td></tr>`).join('')}
     </tbody></table>
 
-    <div class="title"><h2>10. Personnel</h2></div>
-    <table><thead><tr><th>Travailleur</th><th class="right">Payé</th></tr></thead><tbody>
+    <div class="title"><h2>${tr('10. Personnel', '10. العمال')}</h2></div>
+    <table><thead><tr><th>${tr('Travailleur', 'العامل')}</th><th class="right">${tr('Payé', 'المدفوع')}</th></tr></thead><tbody>
       ${rep.staff.payments.map((p) => `<tr><td>${p.name}</td><td class="right">${formatDA(p.total)}</td></tr>`).join('') || '<tr><td colspan="2">—</td></tr>'}
     </tbody></table>
-    <p>Acomptes accordés: ${formatDA(rep.staff.advances)} · Absences: ${rep.staff.absences}</p>
+    <p>${tr('Acomptes accordés', 'التسبيقات الممنوحة')}: ${formatDA(rep.staff.advances)} · ${tr('Absences', 'الغيابات')}: ${rep.staff.absences}</p>
 
-    <div class="title"><h2>11. Caisse</h2></div>
+    <div class="title"><h2>${tr('11. Caisse', '11. الصندوق')}</h2></div>
     <div class="totals" style="width:100%">
-      ${row('Total entrées', formatDA(rep.caisse.totalIn))}
-      ${row('Total sorties', formatDA(rep.caisse.totalOut))}
-      ${row('Solde net période', formatDA(rep.caisse.net))}
+      ${row(tr('Total entrées', 'مجموع المداخيل'), formatDA(rep.caisse.totalIn))}
+      ${row(tr('Total sorties', 'مجموع المخارج'), formatDA(rep.caisse.totalOut))}
+      ${row(tr('Solde net période', 'الرصيد الصافي للفترة'), formatDA(rep.caisse.net))}
     </div>
 
-    <div class="foot">Rapport généré par ${store.name} — ${new Date().toLocaleString('fr-FR')}</div>
+    <div class="foot">${tr('Rapport généré par', 'تقرير صادر عن')} ${store.name} — ${new Date().toLocaleString(tr('fr-FR', 'ar-DZ'))}</div>
   </div>`;
 }
