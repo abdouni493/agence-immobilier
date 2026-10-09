@@ -242,6 +242,17 @@ export const PRINT_STYLES = `
   .tm-line { min-height: 19px; border-bottom: 1.3px dotted #7dd3fc; padding: 0 5px 1px; font-weight: 600; margin: 2px 0; }
   .tm-closing { margin: 8px 0 4px; font-weight: 700; color: #334155; }
   .tm-made { width: 46%; margin-inline-start: auto; }
+  /* No outer frame: the letter spreads over the whole A4 sheet, its blocks
+     evenly spaced from top to bottom so no empty band is left at the end. */
+  .doc.tm-doc { border: none; border-radius: 0; padding: 0; max-width: 100%; min-height: 1030px;
+    display: flex; flex-direction: column; justify-content: space-between; font-size: 12.5px; }
+  .doc.tm-doc::after { display: none; }
+  .doc.tm-doc > * { margin-top: 0 !important; margin-bottom: 0 !important; }
+  .doc.tm-doc .party p, .doc.tm-doc .section p { font-size: 12px; }
+  .doc.tm-doc .tm-row { margin: 6px 0; }
+  .doc.tm-doc .tm-line { min-height: 24px; margin: 5px 0; }
+  .doc.tm-doc .section, .doc.tm-doc .party { padding: 10px 13px; }
+  .doc.tm-doc .sign-box .line { margin-top: 48px; }
 
   @media print {
     body { padding: 0; font-size: 12px; }
@@ -1294,7 +1305,7 @@ export function buildTerminationHTML(
     const reasonLines = reasons.length >= 3 ? reasons : [...reasons, '', '', ''].slice(0, 3);
 
     return `
-  <div class="doc compact">
+  <div class="doc compact tm-doc">
     ${docHeader(store, r.code, `${T.issued} ${numDate(r.terminationDate)}`, T.title)}
 
     <div class="grid2">
