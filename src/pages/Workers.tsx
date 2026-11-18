@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   HardHat, Plus, Pencil, Trash2, Eye, KeyRound, Wallet, Phone, CalendarDays, Check,
-  ArrowLeft, ArrowRight, Shield, Coins, CalendarX, User, Briefcase, Building2, History,
+  ArrowLeft, ArrowRight, Coins, CalendarX, User, Briefcase, Building2, History,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -14,19 +14,20 @@ import { GradientCard } from '@/components/ui/GradientCard';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { TextField, SelectField, Toggle, RadioGroup, Checkbox } from '@/components/ui/Field';
+import { TextField, SelectField, Toggle, RadioGroup } from '@/components/ui/Field';
 import { workerPayCalc, workerCommissions } from '@/store/selectors';
 import { clientName } from '@/lib/lookups';
-import { MODULE_ACTIONS, MODULE_ORDER, fullPermissions } from '@/data/constants';
+import { PermissionsModal } from '@/components/forms/PermissionsModal';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, todayISO, initials, cn } from '@/lib/utils';
-import type { Worker, SalaryType, Permissions, ModuleKey, ActionKey } from '@/types';
+import type { Worker, SalaryType } from '@/types';
 
 export default function Workers() {
   const { t, lang } = useI18n();
   const toast = useToast();
   const workers = useApp((s) => s.workers);
   const deleteWorker = useApp((s) => s.deleteWorker);
+  const setWorkerPermissions = useApp((s) => s.setWorkerPermissions);
   const perms = useCurrentPermissions();
 
   const [search, setSearch] = useState('');
@@ -153,7 +154,14 @@ export default function Workers() {
       )}
 
       {wizardOpen && <WorkerWizard worker={wizardWorker} onClose={() => { setWizardOpen(false); setWizardWorker(null); }} />}
-      {livePerm && <PermissionsModal worker={livePerm} onClose={() => setPermWorker(null)} />}
+      {livePerm && (
+        <PermissionsModal
+          name={livePerm.name}
+          initial={livePerm.permissions}
+          onSave={(p) => setWorkerPermissions(livePerm.id, p)}
+          onClose={() => setPermWorker(null)}
+        />
+      )}
       {liveProfile && <WorkerProfile worker={liveProfile} onClose={() => setProfileWorker(null)} />}
 
       <ConfirmDialog
@@ -308,86 +316,6 @@ function WorkerWizard({ worker, onClose }: { worker: Worker | null; onClose: () 
       </AnimatePresence>
     </Modal>
   );
-}
-
-// ---------------- PERMISSIONS ----------------
-function PermissionsModal({ worker, onClose }: { worker: Worker; onClose: () => void }) {
-  const { t } = useI18n();
-  const toast = useToast();
-  const setWorkerPermissions = useApp((s) => s.setWorkerPermissions);
-  const [perms, setPerms] = useState<Permissions>({ ...worker.permissions });
-
-  const moduleEnabled = (m: ModuleKey) => !!perms[m] && perms[m]!.length > 0;
-  const toggleModule = (m: ModuleKey) => {
-    setPerms((p) => {
-      const next = { ...p };
-      if (moduleEnabled(m)) delete next[m];
-      else next[m] = ['view'];
-      return next;
-    });
-  };
-  const toggleAction = (m: ModuleKey, a: ActionKey) => {
-    setPerms((p) => {
-      const cur = new Set(p[m] ?? []);
-      if (cur.has(a)) cur.delete(a);
-      else cur.add(a);
-      return { ...p, [m]: [...cur] };
-    });
-  };
-  const allOn = MODULE_ORDER.every((m) => moduleEnabled(m));
-  const toggleAll = () => setPerms(allOn ? {} : fullPermissions());
-
-  const save = async () => {
-    try {
-      await setWorkerPermissions(worker.id, perms);
-      toast.success(t('toast.saved'));
-      onClose();
-    } catch {
-      toast.error(t('toast.error'));
-    }
-  };
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={t('workers.permissions')}
-      subtitle={worker.name}
-      size="lg"
-      footer={
-        <div className="flex items-center justify-between">
-          <GradientButton variant="glass" icon={<Shield size={16} />} onClick={toggleAll}>{t('workers.toggleAll')}</GradientButton>
-          <GradientButton onClick={save}>{t('common.save')}</GradientButton>
-        </div>
-      }
-    >
-      <div className="space-y-3">
-        {MODULE_ORDER.map((m) => (
-          <div key={m} className={cn('rounded-xl border p-4 transition-colors', moduleEnabled(m) ? 'border-brand-400/40 bg-brand-500/5' : 'border-slate-200 bg-slate-100/70')}>
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-ink-primary">{t(`nav.${m}`)}</span>
-              <Toggle checked={moduleEnabled(m)} onChange={() => toggleModule(m)} />
-            </div>
-            {moduleEnabled(m) && (
-              <div className="mt-3 flex flex-wrap gap-3 pt-3 border-t border-slate-200">
-                {MODULE_ACTIONS[m].map((a) => (
-                  <Checkbox key={a} checked={perms[m]?.includes(a) ?? false} onChange={() => toggleAction(m, a)} label={actionLabel(a, t)} />
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </Modal>
-  );
-}
-
-function actionLabel(a: ActionKey, t: (k: string) => string): string {
-  const map: Record<ActionKey, string> = {
-    view: t('common.view'), create: t('common.create'), edit: t('common.edit'),
-    delete: t('common.delete'), print: t('common.print'), pay: t('common.pay'),
-  };
-  return map[a];
 }
 
 // ---------------- PROFILE ----------------

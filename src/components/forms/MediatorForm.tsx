@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { User, Phone, Mail, MapPin, IdCard } from 'lucide-react';
+import { User, Phone, Mail, MapPin, IdCard, KeyRound, ShieldCheck } from 'lucide-react';
 import { useI18n } from '@/i18n';
-import { TextField, TextArea } from '@/components/ui/Field';
+import { TextField, TextArea, Toggle } from '@/components/ui/Field';
 import { GradientButton } from '@/components/ui/GradientButton';
 import type { Mediator } from '@/types';
 
@@ -24,15 +24,25 @@ export function MediatorForm({
   onSave,
   onCancel,
   submitLabel,
+  withAccount = false,
 }: {
   initial?: Mediator;
   onSave: (data: MediatorFormData) => void;
   onCancel?: () => void;
   submitLabel?: string;
+  /** Show the optional login-account section (email, username, password). */
+  withAccount?: boolean;
 }) {
   const { t } = useI18n();
   const [data, setData] = useState<MediatorFormData>(initial ? { ...empty, ...initial } : empty);
   const [error, setError] = useState('');
+
+  /** An account that already exists in Supabase Auth cannot be edited here. */
+  const accountExists = !!initial?.authUserId || !!initial?.hasAccount;
+  const [hasAccount, setHasAccount] = useState(!!initial?.hasAccount);
+  const [accEmail, setAccEmail] = useState(initial?.account?.email ?? '');
+  const [accUsername, setAccUsername] = useState(initial?.account?.username ?? '');
+  const [accPassword, setAccPassword] = useState('');
 
   const set = <K extends keyof MediatorFormData>(key: K, value: MediatorFormData[K]) =>
     setData((d) => ({ ...d, [key]: value }));
@@ -42,8 +52,23 @@ export function MediatorForm({
       setError(t('login.required'));
       return;
     }
+    if (withAccount && hasAccount && !accountExists) {
+      if (!accEmail.trim() || !accUsername.trim() || !accPassword) {
+        setError(t('mediators.accountRequired'));
+        return;
+      }
+      if (accPassword.length < 6) {
+        setError(t('mediators.passwordShort'));
+        return;
+      }
+    }
     setError('');
-    onSave(data);
+    const { permissions: _p, authUserId: _a, hasAccount: _h, account: _c, ...base } = data;
+    onSave(
+      withAccount && hasAccount && !accountExists
+        ? { ...base, hasAccount: true, account: { email: accEmail.trim(), username: accUsername.trim(), password: accPassword } }
+        : base,
+    );
   };
 
   return (
@@ -65,6 +90,40 @@ export function MediatorForm({
         <TextField label={t('mediators.cin')} icon={<IdCard size={16} />} value={data.cin} onChange={(e) => set('cin', e.target.value)} />
         <TextArea wrapClassName="sm:col-span-2" label={t('mediators.notes')} value={data.notes} onChange={(e) => set('notes', e.target.value)} />
       </div>
+
+      {withAccount && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <KeyRound size={16} className="text-brand-400" />
+            <h4 className="text-sm font-bold text-ink-primary uppercase tracking-wide">{t('mediators.account')}</h4>
+          </div>
+          {accountExists ? (
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
+              <ShieldCheck size={18} className="text-emerald-600 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-semibold text-ink-primary">{t('mediators.accountActive')}</p>
+                <p className="text-xs text-ink-secondary truncate">
+                  {initial?.account?.username ? `@${initial.account.username} · ` : ''}{initial?.account?.email}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl bg-slate-100/70 border border-slate-200 p-4">
+                <Toggle checked={hasAccount} onChange={setHasAccount} label={t('mediators.hasAccount')} />
+                <p className="text-[11px] text-ink-muted mt-1.5">{t('mediators.accountHint')}</p>
+              </div>
+              {hasAccount && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <TextField label={t('login.username')} required value={accUsername} onChange={(e) => setAccUsername(e.target.value)} icon={<User size={16} />} />
+                  <TextField label={t('common.email')} required type="email" value={accEmail} onChange={(e) => setAccEmail(e.target.value)} icon={<Mail size={16} />} />
+                  <TextField wrapClassName="sm:col-span-2" label={t('login.password')} required type="password" value={accPassword} onChange={(e) => setAccPassword(e.target.value)} icon={<KeyRound size={16} />} />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-sm text-rose-600">{error}</p>}
 

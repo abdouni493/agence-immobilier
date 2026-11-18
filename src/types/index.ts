@@ -1,5 +1,5 @@
 // ============ AUTH & USERS ============
-export type Role = 'admin' | 'worker';
+export type Role = 'admin' | 'worker' | 'mediator';
 
 export interface User {
   id: string;
@@ -10,6 +10,7 @@ export interface User {
   role: Role;
   avatar: string | null;
   workerId?: string; // link to a worker record if role === 'worker'
+  mediatorId?: string; // link to a mediator record if role === 'mediator'
   permissions?: Permissions; // worker's own permissions, loaded at auth time
 }
 
@@ -31,7 +32,28 @@ export type ModuleKey =
 
 export type ActionKey = 'view' | 'create' | 'edit' | 'delete' | 'print' | 'pay';
 
-export type Permissions = Partial<Record<ModuleKey, ActionKey[]>>;
+/**
+ * Pieces of information shown on an apartment card and in its details view.
+ * A worker / mediator account only sees the ones granted to it; the admin
+ * always sees everything.
+ */
+export type AptField =
+  | 'photos'
+  | 'location'
+  | 'price'
+  | 'rooms'
+  | 'floorCategory'
+  | 'furniture'
+  | 'description'
+  | 'owner'
+  | 'mediator'
+  | 'status'
+  | 'history';
+
+export type Permissions = Partial<Record<ModuleKey, ActionKey[]>> & {
+  /** Apartment information visible to this account (undefined = all). */
+  aptFields?: AptField[];
+};
 
 // ============ CLIENTS ============
 export type Sexe = 'M' | 'F';
@@ -222,6 +244,11 @@ export interface Mediator {
   notes?: string;
   payments: MediatorPayment[];
   createdAt: string;
+  /** Login account (like a worker account). */
+  hasAccount?: boolean;
+  account?: { email: string; username: string; password: string };
+  authUserId?: string;
+  permissions?: Permissions;
 }
 
 // ============ SALES (VENTES) ============

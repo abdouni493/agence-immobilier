@@ -27,6 +27,7 @@ import type {
   Purchase,
   Permissions,
   ModuleKey,
+  AptField,
 } from '@/types';
 import { createInitialData, type AppData } from '@/data/seed';
 import { STORE_INFO } from '@/data/constants';
@@ -126,6 +127,16 @@ function dbToMediator(row: Record<string, unknown>): Mediator {
     notes: (row.notes as string) || undefined,
     payments,
     createdAt: ((row.created_at as string) || '').slice(0, 10),
+    hasAccount: !!row.has_account,
+    account: row.has_account
+      ? {
+          email: (row.account_email as string) || '',
+          username: (row.account_username as string) || '',
+          password: '',
+        }
+      : undefined,
+    authUserId: (row.auth_user_id as string) || undefined,
+    permissions: (row.permissions as Permissions) || {},
   };
 }
 
@@ -506,6 +517,7 @@ interface AppState extends AppData, AuthState {
   updateMediator: (id: string, patch: Partial<Mediator>) => Promise<void>;
   deleteMediator: (id: string) => Promise<void>;
   addMediatorPayment: (mediatorId: string, amount: number, note?: string) => Promise<MediatorPayment | null>;
+  setMediatorPermissions: (mediatorId: string, perms: Permissions) => Promise<void>;
 
   // Sales (ventes)
   addSale: (s: Omit<Sale, 'id' | 'code' | 'createdAt'>) => Promise<Sale | null>;
@@ -658,13 +670,9 @@ export const useApp = create<AppState>()((set, get) => ({
     await get().loadAll();
 
     const role = (profile?.role as User['role']) ?? 'worker';
-    let workerId = (profile?.worker_id as string) ?? undefined;
-    let permissions: Permissions | undefined;
-    if (role === 'worker') {
-      const wc = await fetchWorkerPermissions(data.user.id);
-      workerId = wc.workerId ?? workerId;
-      permissions = wc.permissions;
-    }
+    const { workerId, mediatorId, permissions } = await resolveAccountPermissions(
+      role, data.user.id, profile as Record<string, unknown> | null,
+    );
 
     set({
       user: {
@@ -676,6 +684,7 @@ export const useApp = create<AppState>()((set, get) => ({
         role,
         avatar: (profile?.avatar_url as string) ?? null,
         workerId,
+        mediatorId,
         permissions,
       },
     });
@@ -1748,6 +1757,7 @@ export const useApp = create<AppState>()((set, get) => ({
 
   addMediator: async (m) => {
     const today = todayISO();
+    const wantsAccount = !!(m.hasAccount && m.account?.email && m.account.password);
     const { data, error } = await supabase
       .from('mediators')
       .insert({
@@ -1760,21 +1770,47 @@ export const useApp = create<AppState>()((set, get) => ({
         city: m.city || null,
         cin: m.cin || null,
         notes: m.notes || null,
+        // A new mediator account starts with zero permissions.
+        ...(wantsAccount
+          ? {
+              has_account: true,
+              account_email: m.account!.email.trim().toLowerCase(),
+              account_username: m.account!.username.trim().toLowerCase() || null,
+              permissions: {},
+            }
+          : {}),
       })
       .select()
       .single();
     if (error || !data) throw new Error(error?.message ?? 'Failed to add mediator');
+    const id = (data as Record<string, unknown>).id as string;
     const mediator: Mediator = {
       ...m,
-      id: (data as Record<string, unknown>).id as string,
+      id,
       payments: [],
       createdAt: today,
+      hasAccount: wantsAccount,
+      account: wantsAccount ? { ...m.account!, password: '' } : undefined,
+      permissions: {},
     };
     set((s) => ({ mediators: [mediator, ...s.mediators] }));
-    return mediator;
+
+    if (wantsAccount) {
+      try {
+        const authUserId = await createMediatorAccount(id, `${m.firstName} ${m.lastName}`, m.account!);
+        set((s) => ({ mediators: s.mediators.map((x) => (x.id === id ? { ...x, authUserId } : x)) }));
+      } catch (e) {
+        // The mediator is kept, without an account, so the admin can retry.
+        await supabase.from('mediators').update({ has_account: false, account_email: null, account_username: null }).eq('id', id);
+        set((s) => ({ mediators: s.mediators.map((x) => (x.id === id ? { ...x, hasAccount: false, account: undefined } : x)) }));
+        throw e;
+      }
+    }
+    return { ...mediator, authUserId: get().mediators.find((x) => x.id === id)?.authUserId };
   },
 
   updateMediator: async (id, patch) => {
+    const current = get().mediators.find((m) => m.id === id);
     const dbPatch: Record<string, unknown> = {};
     if (patch.firstName !== undefined) dbPatch.first_name = patch.firstName;
     if (patch.lastName !== undefined) dbPatch.last_name = patch.lastName;
@@ -1785,10 +1821,54 @@ export const useApp = create<AppState>()((set, get) => ({
     if (patch.city !== undefined) dbPatch.city = patch.city || null;
     if (patch.cin !== undefined) dbPatch.cin = patch.cin || null;
     if (patch.notes !== undefined) dbPatch.notes = patch.notes || null;
-    if (Object.keys(dbPatch).length > 0) {
-      await supabase.from('mediators').update(dbPatch).eq('id', id);
+
+    // Turning the login account on for a mediator who has none yet creates it
+    // (with zero permissions); an existing account is kept as it is.
+    const createAccount = !!(patch.hasAccount && !current?.authUserId
+      && patch.account?.email && patch.account.password);
+    if (createAccount) {
+      dbPatch.has_account = true;
+      dbPatch.account_email = patch.account!.email.trim().toLowerCase();
+      dbPatch.account_username = patch.account!.username.trim().toLowerCase() || null;
+      dbPatch.permissions = {};
     }
-    set((s) => ({ mediators: s.mediators.map((m) => (m.id === id ? { ...m, ...patch } : m)) }));
+    const nextPatch: Partial<Mediator> = { ...patch };
+    if (!createAccount) {
+      // Account fields only change through account creation.
+      delete nextPatch.hasAccount;
+      delete nextPatch.account;
+    } else {
+      nextPatch.account = { ...patch.account!, password: '' };
+      nextPatch.permissions = {};
+    }
+    if (Object.keys(dbPatch).length > 0) {
+      const { error } = await supabase.from('mediators').update(dbPatch).eq('id', id);
+      if (error) throw new Error(error.message);
+    }
+    set((s) => ({ mediators: s.mediators.map((m) => (m.id === id ? { ...m, ...nextPatch } : m)) }));
+    if (createAccount) {
+      const first = patch.firstName ?? current?.firstName ?? '';
+      const last = patch.lastName ?? current?.lastName ?? '';
+      try {
+        const authUserId = await createMediatorAccount(id, `${first} ${last}`, patch.account!);
+        set((s) => ({ mediators: s.mediators.map((m) => (m.id === id ? { ...m, authUserId } : m)) }));
+      } catch (e) {
+        await supabase.from('mediators').update({ has_account: false, account_email: null, account_username: null }).eq('id', id);
+        set((s) => ({ mediators: s.mediators.map((m) => (m.id === id ? { ...m, hasAccount: false, account: undefined } : m)) }));
+        throw e;
+      }
+    }
+  },
+
+  setMediatorPermissions: async (mediatorId, perms) => {
+    const { error } = await supabase.from('mediators').update({ permissions: perms }).eq('id', mediatorId);
+    if (error) {
+      console.error('setMediatorPermissions failed:', error);
+      throw error;
+    }
+    set((s) => ({
+      mediators: s.mediators.map((m) => (m.id === mediatorId ? { ...m, permissions: perms } : m)),
+    }));
   },
 
   deleteMediator: async (id) => {
@@ -2171,6 +2251,81 @@ export const useApp = create<AppState>()((set, get) => ({
   resetData: () => set({ ...createInitialData(), storeInfo: STORE_INFO }),
 }));
 
+// ─── Mediator login accounts ───────────────────────────────────────────────
+
+/**
+ * Creates the Supabase Auth account of a mediator (same flow as a worker
+ * account): signUp, profile row with role 'mediator', and the auth_user_id
+ * link on the mediator row. The admin's session is restored afterwards since
+ * signUp() switches the active session to the new user. Throws with the
+ * Supabase message when the account could not be created.
+ */
+async function createMediatorAccount(
+  mediatorId: string,
+  name: string,
+  account: { email: string; username: string; password: string },
+): Promise<string> {
+  const email = account.email.trim().toLowerCase();
+  const username = account.username.trim().toLowerCase();
+  const { data: { session: adminSession } } = await supabase.auth.getSession();
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: account.password,
+      options: { data: { name, role: 'mediator', username, mediator_id: mediatorId } },
+    });
+    if (error || !data.user) throw new Error(error?.message ?? 'Account creation failed');
+    const userId = data.user.id;
+    const { error: profileError } = await supabase.from('profiles').upsert(
+      { id: userId, role: 'mediator', name, username: username || null, email, mediator_id: mediatorId },
+      { onConflict: 'id' },
+    );
+    if (profileError) console.error('Mediator profile upsert failed:', profileError);
+    const { error: linkError } = await supabase
+      .from('mediators').update({ auth_user_id: userId }).eq('id', mediatorId);
+    if (linkError) console.error('Mediator auth_user_id link failed:', linkError);
+    return userId;
+  } finally {
+    if (adminSession) {
+      await supabase.auth.setSession({
+        access_token: adminSession.access_token,
+        refresh_token: adminSession.refresh_token,
+      });
+    }
+  }
+}
+
+/** Reads the logged-in mediator's own row (permissions) by auth user id. */
+export async function fetchMediatorPermissions(
+  authUserId: string,
+): Promise<{ mediatorId?: string; permissions: Permissions }> {
+  const { data } = await supabase
+    .from('mediators')
+    .select('id, permissions')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle();
+  if (!data) return { permissions: {} };
+  const row = data as Record<string, unknown>;
+  return { mediatorId: row.id as string, permissions: (row.permissions as Permissions) ?? {} };
+}
+
+/** Resolves role-specific links and permissions right after authentication. */
+export async function resolveAccountPermissions(
+  role: User['role'],
+  authUserId: string,
+  profile: Record<string, unknown> | null | undefined,
+): Promise<{ workerId?: string; mediatorId?: string; permissions?: Permissions }> {
+  if (role === 'worker') {
+    const wc = await fetchWorkerPermissions(authUserId);
+    return { workerId: wc.workerId ?? ((profile?.worker_id as string) || undefined), permissions: wc.permissions };
+  }
+  if (role === 'mediator') {
+    const mc = await fetchMediatorPermissions(authUserId);
+    return { mediatorId: mc.mediatorId ?? ((profile?.mediator_id as string) || undefined), permissions: mc.permissions };
+  }
+  return { workerId: (profile?.worker_id as string) || undefined };
+}
+
 // ─── Permission helpers ─────────────────────────────────────────────────────
 
 /**
@@ -2196,7 +2351,14 @@ export async function fetchWorkerPermissions(
 export function useCurrentPermissions(): Permissions | null {
   const user = useApp((s) => s.user);
   const workers = useApp((s) => s.workers);
+  const mediators = useApp((s) => s.mediators);
   if (!user || user.role === 'admin') return null;
+  if (user.role === 'mediator') {
+    const med = mediators.find(
+      (m) => (!!user.mediatorId && m.id === user.mediatorId) || (!!m.authUserId && m.authUserId === user.id),
+    );
+    return med?.permissions ?? user.permissions ?? {};
+  }
   // Match the worker row by EITHER the profile link (workerId) OR — more
   // reliably — its auth_user_id, which always equals the logged-in user's id.
   // profiles.worker_id is often NULL (a handle_new_user trigger creates the
@@ -2218,4 +2380,15 @@ export function canAccess(perms: Permissions | null, module: ModuleKey): boolean
 export function can(perms: Permissions | null, module: ModuleKey, action: string): boolean {
   if (perms === null) return true;
   return !!perms[module]?.includes(action as never);
+}
+
+/**
+ * Whether a piece of apartment information is shown to the current account.
+ * The admin sees everything; an account whose apartment fields were never
+ * configured keeps seeing everything (previous behaviour).
+ */
+export function canSeeAptField(perms: Permissions | null, field: AptField): boolean {
+  if (perms === null) return true;
+  if (!perms.aptFields) return true;
+  return perms.aptFields.includes(field);
 }

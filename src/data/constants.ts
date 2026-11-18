@@ -1,4 +1,4 @@
-import type { StoreInfo, ModuleKey, ActionKey } from '@/types';
+import type { StoreInfo, ModuleKey, ActionKey, AptField, Permissions } from '@/types';
 
 export const STORE_INFO: StoreInfo = {
   name: 'Ma Résidence',
@@ -46,8 +46,14 @@ export const MODULE_ORDER: ModuleKey[] = [
   'settings',
 ];
 
-export const fullPermissions = (): Record<ModuleKey, ActionKey[]> => {
+/** Every piece of apartment information that can be shown or hidden. */
+export const APT_FIELDS: AptField[] = [
+  'photos', 'location', 'price', 'rooms', 'floorCategory', 'furniture',
+  'description', 'owner', 'mediator', 'status', 'history',
+];
+
+export const fullPermissions = (): Permissions => {
   const out = {} as Record<ModuleKey, ActionKey[]>;
   for (const m of MODULE_ORDER) out[m] = [...MODULE_ACTIONS[m]];
-  return out;
+  return { ...out, aptFields: [...APT_FIELDS] };
 };

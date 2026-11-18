@@ -6,7 +6,7 @@ import {
   ImagePlus, Loader2, RotateCcw, Archive, ImageIcon, ChevronLeft, ChevronRight,
   Phone, Mail, IdCard, Briefcase, KeyRound,
 } from 'lucide-react';
-import { useApp, useCurrentPermissions, can } from '@/store/appStore';
+import { useApp, useCurrentPermissions, can, canSeeAptField } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
 import { useI18n } from '@/i18n';
 import { useToast } from '@/components/ui/Toast';
@@ -25,7 +25,7 @@ import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, todayISO, addDaysISO, cn } from '@/lib/utils';
 import { categoryName, floorName, clientName, mediatorName, rentalPeriodOf, rentalUnits, activeRooms, deletedRooms } from '@/lib/lookups';
 import { uploadApartmentPhoto, deleteApartmentPhoto, formatBytes } from '@/lib/storage';
-import type { Room, RoomStatus, PropertyType, RentalPeriod, DocumentType } from '@/types';
+import type { Room, RoomStatus, PropertyType, RentalPeriod, DocumentType, AptField } from '@/types';
 
 type StatusFilter = 'all' | RoomStatus | 'rental' | 'sale';
 /** Availability view: only free apartments (default), only busy ones, or all. */
@@ -38,6 +38,13 @@ export default function Chambres() {
   const toast = useToast();
   const data = useAppData();
   const perms = useCurrentPermissions();
+  /** Apartment information this account may see (the admin sees all). */
+  const see = (f: AptField) => canSeeAptField(perms, f);
+  // A mediator account is assigned automatically to the apartments it creates.
+  const user = useApp((s) => s.user);
+  const myMediatorId = user?.role === 'mediator'
+    ? (user.mediatorId ?? data.mediators.find((m) => m.authUserId === user.id)?.id)
+    : undefined;
   const { rooms, floors, categories } = data;
 
   const addRoom = useApp((s) => s.addRoom);
@@ -214,23 +221,25 @@ export default function Chambres() {
                       </div>
                       <div>
                         <h3 className="font-bold text-white text-lg">{room.name}</h3>
-                        <p className="text-xs text-sky-200/80">
-                          {[categoryName(data, room.categoryId), floorName(data, room.floorId)].filter((v) => v && v !== '—').join(' · ') || '—'}
-                        </p>
+                        {see('floorCategory') && (
+                          <p className="text-xs text-sky-200/80">
+                            {[categoryName(data, room.categoryId), floorName(data, room.floorId)].filter((v) => v && v !== '—').join(' · ') || '—'}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
-                      <RoomStatusBadge status={status} />
+                      {see('status') && <RoomStatusBadge status={status} />}
                       <PropertyTypeBadge type={room.propertyType ?? 'rental'} />
                     </div>
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                    {(room.propertyType ?? 'rental') === 'rental' && <RentalPeriodBadge period={rentalPeriodOf(room)} />}
-                    <FurnishedBadge furnished={!!room.furnished} />
+                    {(room.propertyType ?? 'rental') === 'rental' && see('price') && <RentalPeriodBadge period={rentalPeriodOf(room)} />}
+                    {see('furniture') && <FurnishedBadge furnished={!!room.furnished} />}
                   </div>
 
-                  {(room.photos?.length ?? 0) > 0 && (
+                  {see('photos') && (room.photos?.length ?? 0) > 0 && (
                     <div className="mt-3 flex gap-1.5 overflow-hidden">
                       {room.photos!.slice(0, 3).map((url, i) => (
                         <img
@@ -249,30 +258,32 @@ export default function Chambres() {
                     </div>
                   )}
 
-                  {room.commune && (
+                  {see('location') && room.commune && (
                     <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-secondary">
                       <MapPin size={13} className="text-sky-300 shrink-0" />
                       {room.commune}
                     </p>
                   )}
-                  {(room.ownerName || room.ownerClientId) && (
+                  {see('owner') && (room.ownerName || room.ownerClientId) && (
                     <p className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-secondary">
                       <Users size={13} className="text-sky-300 shrink-0" />
                       {room.ownerName || clientName(data, room.ownerClientId!)}
                       {room.ownerPhone ? ` · ${room.ownerPhone}` : ''}
                     </p>
                   )}
-                  {room.mediatorId && (
+                  {see('mediator') && room.mediatorId && (
                     <p className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-secondary">
                       <Handshake size={13} className="text-amber-300 shrink-0" /> {mediatorName(data, room.mediatorId)}
                     </p>
                   )}
 
                   <div className="mt-4 flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-1.5 text-ink-secondary">
-                      <Home size={15} className="text-sky-300" /> {room.capacity} {t('apt.roomsNumber').toLowerCase()}
-                    </span>
-                    {(room.propertyType ?? 'rental') === 'sale' ? (
+                    {see('rooms') ? (
+                      <span className="flex items-center gap-1.5 text-ink-secondary">
+                        <Home size={15} className="text-sky-300" /> {room.capacity} {t('apt.roomsNumber').toLowerCase()}
+                      </span>
+                    ) : <span />}
+                    {!see('price') ? null : (room.propertyType ?? 'rental') === 'sale' ? (
                       room.salePrice ? <span className="text-lg font-extrabold text-white">{formatDA(room.salePrice)}</span> : null
                     ) : (
                       <span className="text-lg font-extrabold text-white">
@@ -284,7 +295,7 @@ export default function Chambres() {
                     )}
                   </div>
 
-                  {status === 'maintenance' && room.maintenanceNote && (
+                  {see('status') && status === 'maintenance' && room.maintenanceNote && (
                     <p className="mt-2 text-xs text-amber-300 bg-amber-500/20 border border-amber-500/30 rounded-lg px-2.5 py-1.5">{room.maintenanceNote}</p>
                   )}
 
@@ -293,7 +304,7 @@ export default function Chambres() {
                       {t('common.details')}
                     </GradientButton>
                     <div className="flex-1" />
-                    {hasOwner(room) && (
+                    {hasOwner(room) && see('owner') && (
                       <button onClick={() => printKeyHandover(room)} title={t('apt.keyDoc')} className="btn-card-action btn-action-print">
                         <KeyRound size={15} />
                       </button>
@@ -333,11 +344,12 @@ export default function Chambres() {
           categories={categories}
           onAddFloor={addFloor}
           onAddCategory={addCategory}
+          defaultMediatorId={formRoom ? undefined : myMediatorId}
           onClose={() => setFormOpen(false)}
           onSave={async (payload) => {
             if (formRoom) { await updateRoom(formRoom.id, payload); toast.success(t('toast.updated')); }
             else {
-              const created = await addRoom(payload);
+              const created = await addRoom(myMediatorId ? { ...payload, mediatorId: myMediatorId } : payload);
               toast.success(t('toast.created'));
               if (created && hasOwner(created)) setKeyAsk(created);
             }
@@ -382,7 +394,7 @@ export default function Chambres() {
         }}
       />
 
-      <RoomDetailsModal room={detailRoom} onClose={() => setDetailRoom(null)} data={data} lang={lang} />
+      <RoomDetailsModal room={detailRoom} onClose={() => setDetailRoom(null)} data={data} lang={lang} see={see} />
 
       <TrashModal
         open={trashOpen}
@@ -494,6 +506,10 @@ function RoomStatusBadge({ status }: { status: RoomStatus }) {
   return <Badge tone="warning" dot className="bg-amber-500/20 text-amber-300 border-amber-500/30">{t('rooms.maintenance')}</Badge>;
 }
 
+function roomStatusLabel(status: RoomStatus, t: (k: string) => string): string {
+  return status === 'available' ? t('rooms.available') : status === 'occupied' ? t('rooms.occupied') : t('rooms.maintenance');
+}
+
 function RentalPeriodBadge({ period }: { period: RentalPeriod }) {
   const { t } = useI18n();
   const monthly = period === 'month';
@@ -534,9 +550,11 @@ function PropertyTypeBadge({ type }: { type: PropertyType }) {
 }
 
 function RoomFormModal({
-  room, floors, categories, onAddFloor, onAddCategory, onClose, onSave,
+  room, floors, categories, onAddFloor, onAddCategory, onClose, onSave, defaultMediatorId,
 }: {
   room: Room | null;
+  /** Pre-selected mediator (the logged-in mediator creating the apartment). */
+  defaultMediatorId?: string;
   floors: { id: string; name: string }[];
   categories: { id: string; name: string }[];
   onAddFloor: (name: string) => void;
@@ -567,7 +585,7 @@ function RoomFormModal({
   const [ownerProfession, setOwnerProfession] = useState(room?.ownerProfession ?? '');
   const [ownerDocumentType, setOwnerDocumentType] = useState<DocumentType>(room?.ownerDocumentType ?? 'cin');
   const [ownerDocumentNumber, setOwnerDocumentNumber] = useState(room?.ownerDocumentNumber ?? '');
-  const [mediatorId, setMediatorId] = useState(room?.mediatorId ?? '');
+  const [mediatorId, setMediatorId] = useState(room?.mediatorId ?? defaultMediatorId ?? '');
   const [photos, setPhotos] = useState<string[]>(room?.photos ?? []);
   const [uploading, setUploading] = useState(false);
   const [lastSaving, setLastSaving] = useState<string | null>(null);
@@ -956,12 +974,14 @@ function MaintenanceModal({
 }
 
 function RoomDetailsModal({
-  room, onClose, data, lang,
+  room, onClose, data, lang, see,
 }: {
   room: Room | null;
   onClose: () => void;
   data: ReturnType<typeof useAppData>;
   lang: 'fr' | 'ar';
+  /** Whether a piece of information is visible to the current account. */
+  see: (f: AptField) => boolean;
 }) {
   const { t } = useI18n();
   const [from, setFrom] = useState(addDaysISO(todayISO(), -60));
@@ -989,11 +1009,11 @@ function RoomDetailsModal({
   const expenses = maintenances.reduce((s, m) => s + m.cost, 0);
 
   return (
-    <Modal open={!!room} onClose={onClose} title={room ? `${t('nav.chambres')} ${room.name}` : ''} subtitle={room ? categoryName(data, room.categoryId) : ''} size="lg">
+    <Modal open={!!room} onClose={onClose} title={room ? `${t('nav.chambres')} ${room.name}` : ''} subtitle={room && see('floorCategory') ? categoryName(data, room.categoryId) : ''} size="lg">
       {room && (
         <div className="space-y-5">
           {/* Photo gallery */}
-          <PhotoGallery photos={room.photos ?? []} />
+          {see('photos') && <PhotoGallery photos={room.photos ?? []} />}
 
           {/* Full apartment information */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -1011,12 +1031,13 @@ function RoomDetailsModal({
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
               <Info label={t('rooms.roomName')} value={room.name} />
-              <Info label={t('common.category')} value={categoryName(data, room.categoryId)} />
-              <Info label={t('apt.etage')} value={floorName(data, room.floorId)} />
-              <Info label={t('apt.roomsNumber')} value={String(room.capacity)} />
-              <Info label={t('apt.commune')} value={room.commune} />
-              <Info label={t('apt.furnishing')} value={room.furnished ? t('apt.furnished') : t('apt.unfurnished')} />
-              {(room.propertyType ?? 'rental') === 'sale' ? (
+              {see('floorCategory') && <Info label={t('common.category')} value={categoryName(data, room.categoryId)} />}
+              {see('floorCategory') && <Info label={t('apt.etage')} value={floorName(data, room.floorId)} />}
+              {see('rooms') && <Info label={t('apt.roomsNumber')} value={String(room.capacity)} />}
+              {see('location') && <Info label={t('apt.commune')} value={room.commune} />}
+              {see('furniture') && <Info label={t('apt.furnishing')} value={room.furnished ? t('apt.furnished') : t('apt.unfurnished')} />}
+              {see('status') && <Info label={t('common.status')} value={roomStatusLabel(effectiveRoomStatus(room, data.reservations, todayISO()), t)} />}
+              {!see('price') ? null : (room.propertyType ?? 'rental') === 'sale' ? (
                 <>
                   <Info label={t('apt.salePrice')} value={room.salePrice != null ? formatDA(room.salePrice) : undefined} />
                   <Info label={t('purchases.purchasePrice')} value={room.purchasePrice != null ? formatDA(room.purchasePrice) : undefined} />
@@ -1033,17 +1054,25 @@ function RoomDetailsModal({
                   />
                 </>
               )}
-              <Info label={t('apt.ownerName')} value={room.ownerName || (room.ownerClientId ? clientName(data, room.ownerClientId) : undefined)} />
-              <Info label={t('apt.ownerPhone')} value={room.ownerPhone} />
-              <Info label={t('apt.ownerPhone2')} value={room.ownerPhone2} />
-              <Info label={t('apt.ownerProfession')} value={room.ownerProfession} />
-              <Info label={t('apt.ownerEmail')} value={room.ownerEmail} />
-              <Info label={t('apt.ownerCity')} value={room.ownerCity} />
-              <Info label={t('apt.ownerAddress')} value={room.ownerAddress} />
-              <Info label={t('apt.ownerDocNumber')} value={room.ownerDocumentNumber} />
-              <Info label={t('apt.mediator')} value={room.mediatorId ? mediatorName(data, room.mediatorId) : undefined} />
+              {see('owner') && (() => {
+                // A linked client owner fills the gaps of the free-text fields.
+                const oc = room.ownerClientId ? data.clients.find((c) => c.id === room.ownerClientId) : undefined;
+                return (
+                  <>
+                    <Info label={t('apt.ownerName')} value={room.ownerName || (oc ? `${oc.firstName} ${oc.lastName}` : undefined)} />
+                    <Info label={t('apt.ownerPhone')} value={room.ownerPhone || oc?.phone} />
+                    <Info label={t('apt.ownerPhone2')} value={room.ownerPhone2 || oc?.phone2} />
+                    <Info label={t('apt.ownerProfession')} value={room.ownerProfession || oc?.profession} />
+                    <Info label={t('apt.ownerEmail')} value={room.ownerEmail || oc?.email} />
+                    <Info label={t('apt.ownerCity')} value={room.ownerCity || oc?.city} />
+                    <Info label={t('apt.ownerAddress')} value={room.ownerAddress || oc?.address} />
+                    <Info label={t('apt.ownerDocNumber')} value={room.ownerDocumentNumber || oc?.documentNumber} />
+                  </>
+                );
+              })()}
+              {see('mediator') && <Info label={t('apt.mediator')} value={room.mediatorId ? mediatorName(data, room.mediatorId) : undefined} />}
             </div>
-            {room.furnished && room.furnitureDescription && (
+            {see('furniture') && room.furnished && room.furnitureDescription && (
               <div className="mt-3 pt-3 border-t border-slate-100">
                 <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wide mb-1 flex items-center gap-1.5">
                   <Sofa size={12} /> {t('apt.furnitureDescription')}
@@ -1051,7 +1080,7 @@ function RoomDetailsModal({
                 <p className="text-sm text-ink-secondary whitespace-pre-wrap">{room.furnitureDescription}</p>
               </div>
             )}
-            {room.description && (
+            {see('description') && room.description && (
               <div className="mt-3 pt-3 border-t border-slate-100">
                 <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wide mb-1">{t('apt.description')}</p>
                 <p className="text-sm text-ink-secondary whitespace-pre-wrap">{room.description}</p>
@@ -1059,16 +1088,17 @@ function RoomDetailsModal({
             )}
           </div>
 
+          {see('history') && (<>
           <div className="flex flex-wrap gap-3 items-end">
             <TextField label={t('common.from')} type="date" value={from} onChange={(e) => setFrom(e.target.value)} wrapClassName="flex-1 min-w-[140px]" />
             <TextField label={t('common.to')} type="date" value={to} onChange={(e) => setTo(e.target.value)} wrapClassName="flex-1 min-w-[140px]" />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          {see('price') && <div className="grid grid-cols-3 gap-3">
             <Stat label={t('rooms.gains')} value={formatDA(gains)} tone="success" />
             <Stat label={t('expenses.tabMaintenance')} value={formatDA(expenses)} tone="danger" />
             <Stat label={t('rooms.netBalance')} value={formatDA(gains - expenses)} tone={gains - expenses >= 0 ? 'success' : 'danger'} />
-          </div>
+          </div>}
 
           <div>
             <h4 className="text-sm font-bold text-ink-primary mb-2">{t('rooms.reservationsPeriod')}</h4>
@@ -1101,6 +1131,7 @@ function RoomDetailsModal({
                 ))}
             </div>
           </div>
+          </>)}
         </div>
       )}
     </Modal>

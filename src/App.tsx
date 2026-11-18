@@ -1,7 +1,7 @@
 import { lazy, Suspense, type ReactNode, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useApp, useCurrentPermissions, canAccess, fetchWorkerPermissions } from '@/store/appStore';
+import { useApp, useCurrentPermissions, canAccess, resolveAccountPermissions } from '@/store/appStore';
 import { supabase } from '@/lib/supabase';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageSkeleton } from '@/components/ui/Skeleton';
@@ -154,14 +154,8 @@ export default function App() {
           if (profile) {
             await loadAll();
             const p = profile as Record<string, unknown>;
-            const role = (p.role as 'admin' | 'worker') ?? 'worker';
-            let workerId = (p.worker_id as string) ?? undefined;
-            let permissions: Permissions | undefined;
-            if (role === 'worker') {
-              const wc = await fetchWorkerPermissions(session.user.id);
-              workerId = wc.workerId ?? workerId;
-              permissions = wc.permissions;
-            }
+            const role = (p.role as 'admin' | 'worker' | 'mediator') ?? 'worker';
+            const { workerId, mediatorId, permissions } = await resolveAccountPermissions(role, session.user.id, p);
             setUser({
               id: session.user.id,
               name: (p.name as string) ?? '',
@@ -171,6 +165,7 @@ export default function App() {
               role,
               avatar: (p.avatar_url as string) ?? null,
               workerId,
+              mediatorId,
               permissions,
             });
           }

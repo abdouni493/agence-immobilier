@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Handshake, Plus, Pencil, Trash2, Phone, Mail, MapPin, History, CreditCard,
-  IdCard, Tags, Coins, Printer, Wallet, Building2,
+  IdCard, Tags, Coins, Printer, Wallet, Building2, KeyRound,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -16,6 +16,7 @@ import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PrintPrompt } from '@/components/ui/PrintPrompt';
 import { MediatorForm, type MediatorFormData } from '@/components/forms/MediatorForm';
+import { PermissionsModal } from '@/components/forms/PermissionsModal';
 import { mediatorStats } from '@/store/selectors';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, initials } from '@/lib/utils';
@@ -30,6 +31,7 @@ export default function Mediateurs() {
   const addMediator = useApp((s) => s.addMediator);
   const updateMediator = useApp((s) => s.updateMediator);
   const deleteMediator = useApp((s) => s.deleteMediator);
+  const setMediatorPermissions = useApp((s) => s.setMediatorPermissions);
   const perms = useCurrentPermissions();
 
   const [search, setSearch] = useState('');
@@ -38,6 +40,7 @@ export default function Mediateurs() {
   const [historyMediator, setHistoryMediator] = useState<Mediator | null>(null);
   const [payFor, setPayFor] = useState<Mediator | null>(null);
   const [toDelete, setToDelete] = useState<Mediator | null>(null);
+  const [permFor, setPermFor] = useState<Mediator | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -53,17 +56,23 @@ export default function Mediateurs() {
   // Keep modals bound to the live store record so payments show immediately.
   const liveHistory = historyMediator ? data.mediators.find((m) => m.id === historyMediator.id) ?? null : null;
   const livePay = payFor ? data.mediators.find((m) => m.id === payFor.id) ?? null : null;
+  const livePerm = permFor ? data.mediators.find((m) => m.id === permFor.id) ?? null : null;
 
   const save = async (form: MediatorFormData) => {
-    if (editing) {
-      await updateMediator(editing.id, form);
-      toast.success(t('toast.updated'));
-    } else {
-      await addMediator(form);
-      toast.success(t('toast.created'));
+    try {
+      if (editing) {
+        await updateMediator(editing.id, form);
+        toast.success(t('toast.updated'));
+      } else {
+        await addMediator(form);
+        toast.success(form.hasAccount ? t('mediators.accountCreated') : t('toast.created'));
+      }
+      setFormOpen(false);
+      setEditing(null);
+    } catch (e) {
+      // e.g. the login account could not be created (email already used…).
+      toast.error(`${t('toast.error')} — ${e instanceof Error ? e.message : ''}`);
     }
-    setFormOpen(false);
-    setEditing(null);
   };
 
   return (
@@ -99,6 +108,11 @@ export default function Mediateurs() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <h3 className="font-bold text-white truncate">{m.firstName} {m.lastName}</h3>
+                        {m.hasAccount && (
+                          <span className="inline-flex items-center gap-1 mt-1 me-1 text-[10px] font-semibold bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 rounded-full px-2 py-0.5">
+                            <KeyRound size={10} /> {m.account?.username ? `@${m.account.username}` : t('mediators.account')}
+                          </span>
+                        )}
                         {m.cin && (
                           <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold bg-white/10 border border-white/10 text-sky-200 rounded-full px-2 py-0.5">
                             <IdCard size={10} /> {m.cin}
@@ -140,6 +154,9 @@ export default function Mediateurs() {
                       {can(perms, 'mediators', 'pay') && stats.remaining > 0 && (
                         <button onClick={() => setPayFor(m)} className="btn-card-action btn-action-pay" title={t('common.pay')}><CreditCard size={15} /></button>
                       )}
+                      {can(perms, 'mediators', 'edit') && m.hasAccount && (
+                        <button onClick={() => setPermFor(m)} className="btn-card-action btn-action-perm" title={t('workers.permissions')}><KeyRound size={15} /></button>
+                      )}
                       {can(perms, 'mediators', 'edit') && (
                         <button onClick={() => { setEditing(m); setFormOpen(true); }} className="btn-card-action btn-action-edit" title={t('common.edit')}><Pencil size={15} /></button>
                       )}
@@ -162,11 +179,19 @@ export default function Mediateurs() {
         subtitle={t('clients.personalInfo')}
         width="max-w-2xl"
       >
-        <MediatorForm initial={editing ?? undefined} onSave={save} onCancel={() => { setFormOpen(false); setEditing(null); }} />
+        <MediatorForm key={editing?.id ?? 'new'} withAccount initial={editing ?? undefined} onSave={save} onCancel={() => { setFormOpen(false); setEditing(null); }} />
       </Drawer>
 
       <MediatorHistory mediator={liveHistory} onClose={() => setHistoryMediator(null)} onPay={(m) => { setHistoryMediator(null); setPayFor(m); }} data={data} lang={lang} perms={perms} />
       <MediatorPaymentModal mediator={livePay} onClose={() => setPayFor(null)} />
+      {livePerm && (
+        <PermissionsModal
+          name={`${livePerm.firstName} ${livePerm.lastName}`}
+          initial={livePerm.permissions ?? {}}
+          onSave={(p) => setMediatorPermissions(livePerm.id, p)}
+          onClose={() => setPermFor(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={!!toDelete}

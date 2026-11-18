@@ -63,7 +63,7 @@ export function Header({ onMenu }: { onMenu: () => void }) {
               </span>
               <span className="text-[11px] text-ink-muted leading-none mt-0.5 flex items-center gap-1">
                 {user.role === 'admin' ? <ShieldCheck size={11} /> : <UserCog size={11} />}
-                {user.role === 'admin' ? 'Admin' : t('nav.workers')}
+                {user.role === 'admin' ? 'Admin' : user.role === 'mediator' ? t('nav.mediators') : t('nav.workers')}
               </span>
             </span>
             <ChevronDown size={16} className="text-ink-muted" />

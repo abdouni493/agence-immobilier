@@ -238,12 +238,13 @@ CREATE TABLE IF NOT EXISTS public.workers (
 -- ── Profiles (one per auth user; links a worker login to its worker row) ────
 CREATE TABLE IF NOT EXISTS public.profiles (
   id         uuid NOT NULL,
-  role       text NOT NULL DEFAULT 'worker' CHECK (role = ANY (ARRAY['admin'::text, 'worker'::text])),
+  role       text NOT NULL DEFAULT 'worker' CHECK (role = ANY (ARRAY['admin'::text, 'worker'::text, 'mediator'::text])),
   username   text UNIQUE,
   name       text,
   email      text,
   avatar_url text,
   worker_id  uuid,
+  mediator_id uuid, -- link to a mediator row (role = 'mediator')
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey        FOREIGN KEY (id)        REFERENCES auth.users(id)     ON DELETE CASCADE,
@@ -372,9 +373,25 @@ CREATE TABLE IF NOT EXISTS public.mediators (
   city       text,
   cin        text,
   notes      text,
+  -- Optional login account (same model as workers), zero permissions at creation.
+  has_account      boolean NOT NULL DEFAULT false,
+  auth_user_id     uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  account_email    text,
+  account_username text,
+  permissions      jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT mediators_pkey PRIMARY KEY (id)
 );
+
+-- profiles.mediator_id references mediators (added here so mediators exists first).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'profiles_mediator_id_fkey') THEN
+    ALTER TABLE public.profiles
+      ADD CONSTRAINT profiles_mediator_id_fkey
+      FOREIGN KEY (mediator_id) REFERENCES public.mediators(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- rooms.mediator_id references mediators (added here so mediators exists first).
 DO $$
@@ -505,14 +522,15 @@ SET search_path = public
 AS $$
 BEGIN
   BEGIN
-    INSERT INTO public.profiles (id, role, name, username, email, worker_id)
+    INSERT INTO public.profiles (id, role, name, username, email, worker_id, mediator_id)
     VALUES (
       NEW.id,
       COALESCE(NEW.raw_user_meta_data ->> 'role', 'worker'),
       NEW.raw_user_meta_data ->> 'name',
       NEW.raw_user_meta_data ->> 'username',
       NEW.email,
-      NULLIF(NEW.raw_user_meta_data ->> 'worker_id', '')::uuid
+      NULLIF(NEW.raw_user_meta_data ->> 'worker_id', '')::uuid,
+      NULLIF(NEW.raw_user_meta_data ->> 'mediator_id', '')::uuid
     )
     ON CONFLICT (id) DO NOTHING;
   EXCEPTION WHEN others THEN
