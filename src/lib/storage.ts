@@ -87,10 +87,12 @@ export async function deleteImage(_bucket: string, _publicUrl: string): Promise<
 //  APARTMENT PHOTOS — real Supabase Storage bucket + aggressive optimisation
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Target weight of one stored apartment photo (~100 KB). */
-export const APARTMENT_PHOTO_TARGET_BYTES = 100 * 1024;
-/** Longest edge kept for an apartment photo. */
-const APARTMENT_PHOTO_MAX_DIM = 1600;
+/** Target weight of one stored apartment photo (~60 KB). */
+export const APARTMENT_PHOTO_TARGET_BYTES = 60 * 1024;
+/** Longest edge kept for an apartment photo (sharp on any screen, light). */
+const APARTMENT_PHOTO_MAX_DIM = 1280;
+/** Smallest longest edge the optimiser may shrink a photo to. */
+const APARTMENT_PHOTO_MIN_DIM = 960;
 
 export interface OptimizedImage {
   blob: Blob;
@@ -100,16 +102,45 @@ export interface OptimizedImage {
   optimizedBytes: number;
   width: number;
   height: number;
+  /** Stored format: WebP when the browser can encode it, JPEG otherwise. */
+  mime: 'image/webp' | 'image/jpeg';
+}
+
+/** Whether this browser's canvas can encode WebP (cached). */
+let webpSupport: boolean | null = null;
+async function canEncodeWebp(): Promise<boolean> {
+  if (webpSupport !== null) return webpSupport;
+  const c = document.createElement('canvas');
+  c.width = c.height = 2;
+  const b = await canvasToBlob(c, 'image/webp', 0.8);
+  webpSupport = !!b && b.type === 'image/webp';
+  return webpSupport;
 }
 
 /**
- * Squeezes a picture down to roughly `targetBytes` (default ~100 KB).
+ * Decodes a picture with its camera orientation applied (phone photos are
+ * often stored sideways with an EXIF rotation flag).
+ */
+async function decodeImage(file: File): Promise<{ source: CanvasImageSource; width: number; height: number }> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      return { source: bmp, width: bmp.width, height: bmp.height };
+    } catch { /* fall back to <img> */ }
+  }
+  const img = await loadImage(await fileToDataURL(file));
+  return { source: img, width: img.naturalWidth || img.width, height: img.naturalHeight || img.height };
+}
+
+/**
+ * Squeezes a picture down as much as possible while keeping it sharp at
+ * screen size, aiming at `targetBytes` (default ~60 KB).
  *
- * Two levers, applied in that order: the longest edge is capped, then the JPEG
- * quality is walked down (0.82 → 0.35) until the encoded blob fits. If quality
- * alone is not enough (very large photos), the canvas is progressively halved.
- * A 10 MB camera shot typically lands around 80–120 KB with no visible loss at
- * screen size.
+ * - WebP (≈30 % lighter than JPEG at the same look) when supported, JPEG else;
+ * - the longest edge is capped at 1280 px, then the quality is walked down
+ *   until the file fits, and the canvas is shrunk further if still too heavy;
+ * - transparent areas are flattened on white, metadata (EXIF, GPS) is dropped.
+ * A 5–10 MB camera shot typically lands around 40–70 KB.
  */
 export async function optimizeImage(
   file: File,
@@ -117,51 +148,53 @@ export async function optimizeImage(
   maxDim: number = APARTMENT_PHOTO_MAX_DIM,
 ): Promise<OptimizedImage> {
   const originalBytes = file.size;
-  const dataUrl = await fileToDataURL(file);
-  const img = await loadImage(dataUrl);
+  const mime: OptimizedImage['mime'] = (await canEncodeWebp()) ? 'image/webp' : 'image/jpeg';
+  const { source, width, height } = await decodeImage(file);
 
-  let scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+  let scale = Math.min(1, maxDim / Math.max(width, height));
   let best: { blob: Blob; w: number; h: number } | null = null;
+  const ladder = mime === 'image/webp'
+    ? [0.78, 0.7, 0.62, 0.55, 0.48, 0.42, 0.36]
+    : [0.8, 0.72, 0.64, 0.56, 0.48, 0.42, 0.36];
 
-  // Up to 4 canvas sizes; each one sweeps the quality ladder.
-  for (let pass = 0; pass < 4; pass++) {
-    const w = Math.max(1, Math.round(img.width * scale));
-    const h = Math.max(1, Math.round(img.height * scale));
+  // Up to 5 canvas sizes; each one sweeps the quality ladder.
+  for (let pass = 0; pass < 5; pass++) {
+    const w = Math.max(1, Math.round(width * scale));
+    const h = Math.max(1, Math.round(height * scale));
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d');
     if (!ctx) break;
-    ctx.drawImage(img, 0, 0, w, h);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(source, 0, 0, w, h);
 
-    for (const quality of [0.82, 0.7, 0.6, 0.5, 0.42, 0.35]) {
-      const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+    for (const quality of ladder) {
+      const blob = await canvasToBlob(canvas, mime, quality);
       if (!blob) continue;
       if (!best || blob.size < best.blob.size) best = { blob, w, h };
       if (blob.size <= targetBytes) {
-        return { blob, originalBytes, optimizedBytes: blob.size, width: w, height: h };
+        if ('close' in source) (source as ImageBitmap).close();
+        return { blob, originalBytes, optimizedBytes: blob.size, width: w, height: h, mime };
       }
     }
-    scale *= 0.75; // still too heavy → shrink the canvas and try again
+    // Still too heavy → shrink the canvas, but never below ~960 px on the
+    // longest edge so the photo stays sharp in the full-screen viewer.
+    const nextLongest = Math.max(width, height) * scale * 0.8;
+    if (nextLongest < APARTMENT_PHOTO_MIN_DIM) break;
+    scale *= 0.8;
   }
+  if ('close' in source) (source as ImageBitmap).close();
 
-  if (best) {
-    return {
-      blob: best.blob,
-      originalBytes,
-      optimizedBytes: best.blob.size,
-      width: best.w,
-      height: best.h,
-    };
+  // Keep the original only if it is somehow lighter than every attempt.
+  if (best && best.blob.size < originalBytes) {
+    return { blob: best.blob, originalBytes, optimizedBytes: best.blob.size, width: best.w, height: best.h, mime };
   }
-  // Canvas unavailable (or an exotic format): store the file untouched.
-  return {
-    blob: file,
-    originalBytes,
-    optimizedBytes: file.size,
-    width: img.width,
-    height: img.height,
-  };
+  const fallbackMime = file.type === 'image/webp' ? 'image/webp' : 'image/jpeg';
+  return { blob: file, originalBytes, optimizedBytes: file.size, width, height, mime: fallbackMime };
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement, mime: string, quality: number): Promise<Blob | null> {
@@ -182,10 +215,11 @@ export async function uploadApartmentPhoto(
   const optimized = await optimizeImage(file);
   const safeId = roomId || 'new';
   const rand = Math.random().toString(36).slice(2, 8);
-  const path = `${safeId}/${Date.now()}-${rand}.jpg`;
+  const ext = optimized.mime === 'image/webp' ? 'webp' : 'jpg';
+  const path = `${safeId}/${Date.now()}-${rand}.${ext}`;
 
   const { error } = await supabase.storage.from(APARTMENT_BUCKET).upload(path, optimized.blob, {
-    contentType: 'image/jpeg',
+    contentType: optimized.mime,
     upsert: false,
     cacheControl: '31536000',
   });

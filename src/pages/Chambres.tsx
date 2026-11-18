@@ -599,41 +599,69 @@ function RoomFormModal({
   const [showFloorInput, setShowFloorInput] = useState(false);
   const [showCatInput, setShowCatInput] = useState(false);
 
+  /** Upload progress: files done / total, and the bytes saved so far. */
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  /** Photos uploaded in this form session — deleted again if it is cancelled. */
+  const [sessionUploads, setSessionUploads] = useState<string[]>([]);
+
   /**
-   * Optimises then uploads every picked file. A 10 MB shot is squeezed down to
-   * roughly 100 KB before it ever reaches the bucket, so the gallery stays fast.
+   * Optimises (WebP/JPEG, ~60 KB, max 1280 px) then uploads every picked file
+   * to the `apartment-photos` bucket. One failing file does not stop the rest.
    */
-  const handlePhotos = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  const handlePhotos = async (files: FileList | File[] | null) => {
+    const list = Array.from(files ?? []).filter((f) => f.type.startsWith('image/'));
+    if (list.length === 0) return;
     setUploading(true);
-    let saved: string | null = null;
-    try {
-      for (const file of Array.from(files)) {
+    setProgress({ done: 0, total: list.length });
+    let before = 0;
+    let after = 0;
+    let failed = 0;
+    for (const file of list) {
+      try {
         const res = await uploadApartmentPhoto(file, room?.id ?? 'new');
         setPhotos((prev) => [...prev, res.url]);
-        saved = t('apt.photoOptimized', {
-          from: formatBytes(res.originalBytes),
-          to: formatBytes(res.optimizedBytes),
-        });
+        setSessionUploads((prev) => [...prev, res.url]);
+        before += res.originalBytes;
+        after += res.optimizedBytes;
+      } catch (e) {
+        console.error('apartment photo upload failed:', e);
+        failed++;
       }
-      setLastSaving(saved);
-    } catch (e) {
-      console.error('apartment photo upload failed:', e);
-      toast.error(t('apt.photoError'));
-    } finally {
-      setUploading(false);
+      setProgress((p) => (p ? { ...p, done: p.done + 1 } : p));
     }
+    if (after > 0) {
+      const pct = before > 0 ? Math.max(0, Math.round((1 - after / before) * 100)) : 0;
+      setLastSaving(`${t('apt.photoOptimized', { from: formatBytes(before), to: formatBytes(after) })} (−${pct}%)`);
+    }
+    if (failed > 0) toast.error(`${t('apt.photoError')} (${failed})`);
+    setUploading(false);
+    setProgress(null);
   };
 
   const removePhoto = async (url: string) => {
     setPhotos((prev) => prev.filter((u) => u !== url));
-    try { await deleteApartmentPhoto(url); } catch { /* already gone */ }
+    // Only delete from the bucket right away a photo that was never saved on
+    // the apartment; a saved one is removed only if the form is saved.
+    if (sessionUploads.includes(url) || !room?.photos?.includes(url)) {
+      try { await deleteApartmentPhoto(url); } catch { /* already gone */ }
+    }
+  };
+
+  /** Cancelling the form removes the photos uploaded during it (no orphans). */
+  const cancel = () => {
+    for (const url of sessionUploads) deleteApartmentPhoto(url).catch(() => {});
+    onClose();
   };
 
   const save = () => {
     if (!name.trim()) return toast.error(t('login.required'));
     if (propertyType === 'rental' && !price) return toast.error(t('login.required'));
     if (furnished && !furnitureDescription.trim()) return toast.error(t('apt.furnitureRequired'));
+    // Saved photos the user removed in this form leave the bucket now.
+    for (const url of room?.photos ?? []) {
+      if (!photos.includes(url)) deleteApartmentPhoto(url).catch(() => {});
+    }
     onSave({
       name: name.trim(),
       capacity: Number(capacity) || 1,
@@ -668,13 +696,13 @@ function RoomFormModal({
   return (
     <Modal
       open
-      onClose={onClose}
+      onClose={cancel}
       title={room ? `${t('common.edit')} · ${room.name}` : t('rooms.new')}
       size="lg"
       footer={
         <div className="flex gap-3 justify-end">
-          <GradientButton variant="glass" onClick={onClose}>{t('common.cancel')}</GradientButton>
-          <GradientButton onClick={save}>{t('common.save')}</GradientButton>
+          <GradientButton variant="glass" onClick={cancel}>{t('common.cancel')}</GradientButton>
+          <GradientButton onClick={save} disabled={uploading}>{t('common.save')}</GradientButton>
         </div>
       }
     >
@@ -827,8 +855,13 @@ function RoomFormModal({
           )}
         </div>
 
-        {/* Photos — stored in the apartment-photos bucket, compressed to ~100 KB */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        {/* Photos — optimised (WebP/JPEG ~60 KB) then stored in the apartment-photos bucket */}
+        <div
+          className={cn('rounded-xl border p-4 transition-colors', dragOver ? 'border-brand-400 bg-brand-50' : 'border-slate-200 bg-slate-50')}
+          onDragOver={(e) => { e.preventDefault(); if (!uploading) setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); if (!uploading) handlePhotos(e.dataTransfer.files); }}
+        >
           <p className="text-xs font-semibold text-ink-secondary mb-1 flex items-center gap-1.5">
             <ImageIcon size={14} className="text-brand-400" /> {t('apt.photos')}
           </p>
@@ -863,10 +896,20 @@ function RoomFormModal({
               />
               <span className="flex flex-col items-center gap-1 text-[11px] font-semibold text-ink-secondary px-2">
                 {uploading ? <Loader2 size={18} className="animate-spin text-brand-500" /> : <ImagePlus size={18} className="text-brand-500" />}
-                {uploading ? t('apt.uploading') : t('apt.addPhotos')}
+                {uploading && progress ? `${t('apt.uploading')} ${progress.done}/${progress.total}` : t('apt.addPhotos')}
               </span>
             </label>
           </div>
+
+          {uploading && progress && (
+            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-sky-500 to-emerald-500 transition-all"
+                style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+              />
+            </div>
+          )}
+          <p className="mt-2 text-[11px] text-ink-muted">{t('apt.photosDrop')}</p>
 
           {lastSaving && !uploading && (
             <p className="mt-2 text-[11px] font-semibold text-emerald-600">{lastSaving}</p>

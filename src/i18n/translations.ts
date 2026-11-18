@@ -418,10 +418,10 @@ export const translations: Record<Lang, Record<string, string>> = {
 
     // Apartment photos
     'apt.photos': "Photos de l’appartement",
-    'apt.photosHint': "Les images sont automatiquement compressées (~100 Ko) avant enregistrement.",
+    'apt.photosHint': "Les images sont automatiquement optimisées (~60 Ko) avant enregistrement.",
     'apt.addPhotos': 'Ajouter des photos',
     'apt.uploading': 'Optimisation et envoi…',
-    'apt.photoOptimized': 'Photo optimisée : {from} → {to}',
+    'apt.photoOptimized': 'Photos optimisées : {from} → {to}',
     'apt.noPhotos': 'Aucune photo',
     'apt.photoError': "Envoi impossible. Vérifiez que le bucket « apartment-photos » existe dans Supabase.",
     'apt.photoGallery': 'Galerie photos',
@@ -462,6 +462,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     'apt.owner': 'Propriétaire du bien',
     'apt.keyDoc': 'Contrat de remise des clés',
     'apt.fullScreen': 'Plein écran',
+    'apt.photosDrop': 'Glissez-déposez vos photos ici. Chaque photo est optimisée automatiquement (WebP, ~60 Ko, 1280 px max, orientation corrigée) avant l\'envoi dans le bucket Supabase.',
     'res.refund': 'Bon de récupération',
     'res.refundConfirm': 'Rembourser et imprimer',
     'res.refundMsg': "Rendre {amount} au client pour la location {code} ? Les versements seront supprimés et retirés de la caisse, et la location sera annulée. Le bon de récupération sera ensuite imprimé.",
@@ -1158,10 +1159,10 @@ export const translations: Record<Lang, Record<string, string>> = {
 
     // Apartment photos
     'apt.photos': 'صور الشقة',
-    'apt.photosHint': 'يتم ضغط الصور تلقائياً (حوالي 100 ك.ب) قبل الحفظ.',
+    'apt.photosHint': 'يتم ضغط الصور تلقائياً (حوالي 60 ك.ب) قبل الحفظ.',
     'apt.addPhotos': 'إضافة صور',
     'apt.uploading': 'جارٍ الضغط والرفع…',
-    'apt.photoOptimized': 'تم ضغط الصورة : {from} → {to}',
+    'apt.photoOptimized': 'تم ضغط الصور : {from} → {to}',
     'apt.noPhotos': 'لا توجد صور',
     'apt.photoError': 'تعذر الرفع. تأكد من وجود الـ bucket « apartment-photos ».',
     'apt.photoGallery': 'معرض الصور',
@@ -1201,6 +1202,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     'apt.owner': 'مالك العقار',
     'apt.keyDoc': 'عقد إستلام مفتاح الشقة',
     'apt.fullScreen': 'ملء الشاشة',
+    'apt.photosDrop': 'اسحب الصور وأفلتها هنا. تضغط كل صورة تلقائيا (WebP، حوالي 60 ك.ب، 1280 بكسل كحد أقصى، مع تصحيح الاتجاه) قبل رفعها إلى حاوية Supabase.',
     'res.refund': 'وصل استرجاع المبلغ',
     'res.refundConfirm': 'إرجاع المبلغ والطباعة',
     'res.refundMsg': 'إرجاع {amount} إلى الزبون للكراء {code} ؟ ستحذف الدفعات وتلغى من حساب الصندوق، ويلغى الكراء. ثم يطبع وصل الاسترجاع.',
