@@ -50,9 +50,27 @@ export type AptField =
   | 'status'
   | 'history';
 
+/** Statistic cards of the dashboard. */
+export type DashCard =
+  | 'revenue'
+  | 'expenses'
+  | 'balance'
+  | 'debts'
+  | 'roomsAvailable'
+  | 'activeReservations'
+  | 'occupancy'
+  | 'maintenance'
+  | 'totalClients'
+  | 'activeWorkers'
+  | 'monthReservations'
+  | 'topService';
+
 export type Permissions = Partial<Record<ModuleKey, ActionKey[]>> & {
   /** Apartment information visible to this account (undefined = all). */
   aptFields?: AptField[];
+  /** Dashboard cards showing their real value (undefined = all); the other
+   *  cards stay on the dashboard but display zero. */
+  dashCards?: DashCard[];
 };
 
 // ============ CLIENTS ============
@@ -221,6 +239,10 @@ export interface Reservation {
   terminatedBy?: TerminationParty;
   /** "Fait à" — place where the termination letter was drawn up. */
   terminationPlace?: string;
+  /** Amount given back to the client (bon de récupération). */
+  refundAmount?: number;
+  /** Date the amount was given back. */
+  refundDate?: string;
 }
 
 // ============ MEDIATORS ============

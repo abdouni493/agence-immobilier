@@ -1341,6 +1341,110 @@ export function buildKeyHandoverHTML(data: AppData, room: Room, store: StoreInfo
   </div>`;
 }
 
+// ─── Bon de récupération / وصل استرجاع المبلغ ───────────────────────────────
+
+/**
+ * Refund voucher: the agency gives the paid amount back to the client. Same
+ * charter, colours and organisation as the key handover contract: header with
+ * the round logo, title band, the agency and client parties, the rental, the
+ * refunded amount, a declaration, the conditions and both signature places.
+ */
+export function buildRefundHTML(data: AppData, r: Reservation, store: StoreInfo): string {
+  const client = clientById(data, r.clientId);
+  const clientName = client ? `${client.firstName} ${client.lastName}` : '';
+  const amount = r.refundAmount ?? reservationPaid(r);
+  const date = r.refundDate ?? todayISO();
+  const title = tr('Bon de Récupération', 'وصل استرجاع المبلغ');
+  const roomsList = r.rooms
+    .map((rr) => data.rooms.find((x) => x.id === rr.roomId)?.name)
+    .filter(Boolean)
+    .join(', ');
+  const place = data.rooms.find((x) => x.id === r.rooms[0]?.roomId)?.commune ?? '';
+  const fill = (k: string, v = '', ltr = false) =>
+    `<div class="tm-row"><span class="k">${k}</span><span class="tm-fill">${ltr && v ? `<bdi dir="ltr">${v}</bdi>` : v}</span></div>`;
+
+  const clauses = [
+    tr("Le client reconnaît avoir récupéré auprès de l'agence la totalité de la somme indiquée ci-dessus.", 'يقر الزبون بأنه استرجع من الوكالة كامل المبلغ المذكور أعلاه.'),
+    tr('Les versements correspondants sont annulés et la location référencée ci-dessus est annulée.', 'تلغى الدفعات المقابلة ويلغى الكراء المذكور أعلاه.'),
+    tr("Le client déclare n'avoir plus aucune réclamation envers l'agence au titre de cette location.", 'يصرح الزبون بأنه لم يعد له أي مطالبة تجاه الوكالة بخصوص هذا الكراء.'),
+    tr("L'appartement est de nouveau disponible à la location.", 'تصبح الشقة متاحة للكراء من جديد.'),
+    tr('Établi en deux exemplaires originaux, un pour chaque partie.', 'حرر هذا الوصل في نسختين أصليتين، نسخة لكل طرف.'),
+  ];
+
+  return `
+  <div class="doc compact">
+    ${docHeader(store, r.code, `${tr('Établi le', 'حرر في')} ${formatDate(date)}`, title, { sideLogo: true })}
+
+    <div class="doc-title-band">
+      <h2>${title}</h2>
+      <div class="sub">${tr('Restitution au client de la somme versée', 'إرجاع المبلغ المدفوع إلى الزبون')}</div>
+    </div>
+
+    <div class="parties">
+      <div class="party">
+        <h3>${tr("L'Agence", 'الوكالة')}</h3>
+        <p class="role">${tr('Restitue la somme', 'ترجع المبلغ')}</p>
+        <p><strong>${store.name}</strong></p>
+        ${store.address ? `<p>${store.address}</p>` : ''}
+        ${tel(store.phone)}
+        ${store.email ? `<p>${store.email}</p>` : ''}
+        ${store.rc ? `<p>RC : ${store.rc}${store.nif ? ` · NIF : ${store.nif}` : ''}</p>` : ''}
+      </div>
+      <div class="party">
+        <h3>${tr('Le Client', 'الزبون')}</h3>
+        <p class="role">${tr('Récupère la somme', 'يسترجع المبلغ')}</p>
+        <p><strong>${clientName || '—'}</strong></p>
+        ${tel(client?.phone ? `${client.phone}${client.phone2 ? ` / ${client.phone2}` : ''}` : '')}
+        ${client?.address || client?.city ? `<p>${[client?.address, client?.city].filter(Boolean).join(', ')}</p>` : ''}
+        ${client?.documentType ? `<p>${tr('Pièce :', 'الوثيقة :')} ${client.documentNumber ?? '—'} (${docTypeLabel(client.documentType)})</p>` : ''}
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="section violet">
+        <h3>📋 ${tr('Location', 'كراء')} ${r.code}</h3>
+        <p><strong>${tr('Appartement(s) :', 'الشقق :')}</strong> ${roomsList || '—'}</p>
+        <p><strong>${tr('Arrivée :', 'الدخول :')}</strong> ${formatDate(r.checkIn)}</p>
+        <p><strong>${tr('Départ :', 'الخروج :')}</strong> ${formatDate(r.checkOut)}</p>
+        <p><strong>${tr('Total location :', 'مجموع الكراء :')}</strong> ${formatDA(r.total)}</p>
+      </div>
+      <div class="section green">
+        <h3>💰 ${tr('Récupération', 'الاسترجاع')}</h3>
+        ${fill(tr('Date :', 'التاريخ :'), numDate(date), true)}
+        ${fill(tr('Montant récupéré :', 'المبلغ المسترجع :'), formatDA(amount), true)}
+        ${fill(tr('Observations :', 'ملاحظات :'))}
+      </div>
+    </div>
+
+    <div class="amount-hero">
+      <div class="lbl">${tr('Montant restitué au client', 'المبلغ المرجع إلى الزبون')}</div>
+      <div class="val">${formatDA(amount)}</div>
+    </div>
+
+    <p class="tm-decl">${tr(
+      `Je soussigné(e) ${clientName || '……………………'} reconnais avoir récupéré auprès de l'agence ${store.name} la somme de ${formatDA(amount)} versée au titre de la location ${r.code}.`,
+      `أنا الموقع(ة) أسفله السيد(ة) ${clientName || '……………………'}، أقر بأنني استرجعت من الوكالة ${store.name} مبلغ ${formatDA(amount)} المدفوع بعنوان الكراء ${r.code}.`,
+    )}</p>
+
+    <div class="clauses">
+      <h4>${tr('Conditions', 'الشروط')}</h4>
+      <ol>${clauses.map((c) => `<li>${c}</li>`).join('')}</ol>
+    </div>
+
+    <div class="tm-made">
+      ${fill(tr('Fait à :', 'حرر في :'), place)}
+      ${fill(tr('Le :', 'التاريخ :'), numDate(date), true)}
+    </div>
+
+    <div class="sign-grid even two">
+      <div class="sign-box"><p class="who">${tr('Signature du client', 'توقيع الزبون')}</p><div class="sign-space"></div><div class="line">${clientName || '&nbsp;'}</div></div>
+      <div class="sign-box"><p class="who">${tr("Cachet et signature de l'agence", 'ختم وتوقيع الوكالة')}</p><div class="sign-space"></div><div class="line">${store.name}</div></div>
+    </div>
+
+    <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
+  </div>`;
+}
+
 // ─── Résiliation / فسخ عقد إيجار (termination of a rental contract) ─────────
 
 export type TerminationLang = 'fr' | 'ar';

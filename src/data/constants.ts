@@ -1,4 +1,4 @@
-import type { StoreInfo, ModuleKey, ActionKey, AptField, Permissions } from '@/types';
+import type { StoreInfo, ModuleKey, ActionKey, AptField, DashCard, Permissions } from '@/types';
 
 export const STORE_INFO: StoreInfo = {
   name: 'Ma Résidence',
@@ -52,8 +52,14 @@ export const APT_FIELDS: AptField[] = [
   'description', 'owner', 'mediator', 'status', 'history',
 ];
 
+/** Every dashboard statistic card whose value can be shown or zeroed. */
+export const DASH_CARDS: DashCard[] = [
+  'revenue', 'expenses', 'balance', 'debts', 'roomsAvailable', 'activeReservations',
+  'occupancy', 'maintenance', 'totalClients', 'activeWorkers', 'monthReservations', 'topService',
+];
+
 export const fullPermissions = (): Permissions => {
   const out = {} as Record<ModuleKey, ActionKey[]>;
   for (const m of MODULE_ORDER) out[m] = [...MODULE_ACTIONS[m]];
-  return { ...out, aptFields: [...APT_FIELDS] };
+  return { ...out, aptFields: [...APT_FIELDS], dashCards: [...DASH_CARDS] };
 };

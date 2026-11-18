@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { Shield, Eye, EyeOff, Building2 } from 'lucide-react';
+import { Shield, Eye, EyeOff, Building2, LayoutDashboard } from 'lucide-react';
 import { useI18n } from '@/i18n';
 import { useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
 import { GradientButton } from '@/components/ui/GradientButton';
 import { Toggle, Checkbox } from '@/components/ui/Field';
-import { MODULE_ACTIONS, MODULE_ORDER, APT_FIELDS, fullPermissions } from '@/data/constants';
+import { MODULE_ACTIONS, MODULE_ORDER, APT_FIELDS, DASH_CARDS, fullPermissions } from '@/data/constants';
 import { cn } from '@/lib/utils';
-import type { Permissions, ModuleKey, ActionKey, AptField } from '@/types';
+import type { Permissions, ModuleKey, ActionKey, AptField, DashCard } from '@/types';
 
 export function actionLabel(a: ActionKey, t: (k: string) => string): string {
   const map: Record<ActionKey, string> = {
@@ -41,11 +41,13 @@ export function PermissionsModal({
       if (moduleEnabled(m)) {
         delete next[m];
         if (m === 'chambres') delete next.aptFields;
+        if (m === 'dashboard') delete next.dashCards;
       } else {
         next[m] = ['view'];
         // Opening the apartments shows every piece of information by default;
         // the admin then unticks what this account must not see.
         if (m === 'chambres' && !next.aptFields) next.aptFields = [...APT_FIELDS];
+        if (m === 'dashboard' && !next.dashCards) next.dashCards = [...DASH_CARDS];
       }
       return next;
     });
@@ -70,6 +72,18 @@ export function PermissionsModal({
   const allFieldsOn = APT_FIELDS.every((f) => fields.includes(f));
   const toggleAllFields = () => setPerms((p) => ({ ...p, aptFields: allFieldsOn ? [] : [...APT_FIELDS] }));
 
+  const cards = perms.dashCards ?? DASH_CARDS;
+  const toggleCard = (c: DashCard) => {
+    setPerms((p) => {
+      const cur = new Set(p.dashCards ?? DASH_CARDS);
+      if (cur.has(c)) cur.delete(c);
+      else cur.add(c);
+      return { ...p, dashCards: DASH_CARDS.filter((x) => cur.has(x)) };
+    });
+  };
+  const allCardsOn = DASH_CARDS.every((c) => cards.includes(c));
+  const toggleAllCards = () => setPerms((p) => ({ ...p, dashCards: allCardsOn ? [] : [...DASH_CARDS] }));
+
   const allOn = MODULE_ORDER.every((m) => moduleEnabled(m));
   const toggleAll = () => setPerms(allOn ? {} : fullPermissions());
 
@@ -79,6 +93,7 @@ export function PermissionsModal({
       // what the admin sees in this screen is exactly what the account gets.
       const out: Permissions = { ...perms };
       if (moduleEnabled('chambres') && !out.aptFields) out.aptFields = [...APT_FIELDS];
+      if (moduleEnabled('dashboard') && !out.dashCards) out.dashCards = [...DASH_CARDS];
       await onSave(out);
       toast.success(t('toast.saved'));
       onClose();
@@ -113,6 +128,41 @@ export function PermissionsModal({
                 {MODULE_ACTIONS[m].map((a) => (
                   <Checkbox key={a} checked={perms[m]?.includes(a) ?? false} onChange={() => toggleAction(m, a)} label={actionLabel(a, t)} />
                 ))}
+              </div>
+            )}
+            {m === 'dashboard' && moduleEnabled(m) && (
+              <div className="mt-3 rounded-xl border border-sky-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-sm font-bold text-ink-primary">
+                    <LayoutDashboard size={15} className="text-sky-600" /> {t('perm.dashCards')}
+                  </p>
+                  <button type="button" onClick={toggleAllCards} className="text-xs font-semibold text-brand-600 hover:underline">
+                    {allCardsOn ? t('perm.hideAll') : t('perm.showAll')}
+                  </button>
+                </div>
+                <p className="text-[11px] text-ink-muted mt-0.5 mb-2.5">{t('perm.dashCardsHint')}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {DASH_CARDS.map((c) => {
+                    const on = cards.includes(c);
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => toggleCard(c)}
+                        className={cn(
+                          'flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-start text-sm transition-all',
+                          on ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-ink-muted',
+                        )}
+                      >
+                        <span className="font-medium">{t(c === 'topService' ? 'dash.topService' : `dash.${c}`)}</span>
+                        <span className="flex items-center gap-1 text-[11px] font-bold shrink-0">
+                          {on ? <Eye size={14} /> : <EyeOff size={14} />}
+                          {on ? t('perm.visible') : t('perm.zero')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
             {m === 'chambres' && moduleEnabled(m) && (

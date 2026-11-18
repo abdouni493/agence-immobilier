@@ -28,6 +28,7 @@ import type {
   Permissions,
   ModuleKey,
   AptField,
+  DashCard,
 } from '@/types';
 import { createInitialData, type AppData } from '@/data/seed';
 import { STORE_INFO } from '@/data/constants';
@@ -239,6 +240,8 @@ function dbToReservation(row: Record<string, unknown>): Reservation {
     terminationReason: (row.termination_reason as string) || undefined,
     terminatedBy: (row.terminated_by as Reservation['terminatedBy']) || undefined,
     terminationPlace: (row.termination_place as string) || undefined,
+    refundAmount: row.refund_amount != null ? Number(row.refund_amount) : undefined,
+    refundDate: (row.refund_date as string) || undefined,
   };
   return r;
 }
@@ -482,6 +485,12 @@ interface AppState extends AppData, AuthState {
     info: { date: string; reason?: string; by: NonNullable<Reservation['terminatedBy']>; place?: string },
   ) => Promise<boolean>;
   deleteReservation: (id: string) => Promise<void>;
+  /**
+   * Gives the paid amount back to the client (bon de récupération): the
+   * payments are removed — so they no longer count in the caisse — and the
+   * rental is cancelled. Returns the refunded amount, or null on failure.
+   */
+  refundReservation: (id: string, date: string) => Promise<number | null>;
   addPayment: (resId: string, amount: number, note?: string) => Promise<void>;
 
   // Workers
@@ -1309,6 +1318,44 @@ export const useApp = create<AppState>()((set, get) => ({
       ),
     }));
     return true;
+  },
+
+  refundReservation: async (id, date) => {
+    const current = get().reservations.find((r) => r.id === id);
+    if (!current) return null;
+    const amount = current.payments.reduce((s, p) => s + p.amount, 0);
+    if (amount <= 0) return null;
+
+    const { error } = await supabase
+      .from('reservations')
+      .update({ status: 'cancelled', refund_amount: amount, refund_date: date })
+      .eq('id', id);
+    if (error) {
+      console.error('refundReservation failed:', error);
+      return null;
+    }
+    // The versements are removed: the caisse no longer counts them.
+    const { error: payError } = await supabase.from('payments').delete().eq('reservation_id', id);
+    if (payError) console.error('refundReservation: payments delete failed:', payError);
+
+    // Free the apartment(s) like a termination does.
+    const roomIds = current.rooms.map((rr) => rr.roomId);
+    const toFree = get().rooms.filter((room) => roomIds.includes(room.id) && room.status === 'occupied');
+    if (toFree.length > 0) {
+      await supabase.from('rooms').update({ status: 'available' }).in('id', toFree.map((room) => room.id));
+    }
+
+    set((s) => ({
+      reservations: s.reservations.map((r) =>
+        r.id === id
+          ? { ...r, status: 'cancelled', payments: [], refundAmount: amount, refundDate: date }
+          : r,
+      ),
+      rooms: s.rooms.map((room) =>
+        toFree.some((x) => x.id === room.id) ? { ...room, status: 'available' } : room,
+      ),
+    }));
+    return amount;
   },
 
   deleteReservation: async (id) => {
@@ -2387,6 +2434,18 @@ export function can(perms: Permissions | null, module: ModuleKey, action: string
  * The admin sees everything; an account whose apartment fields were never
  * configured keeps seeing everything (previous behaviour).
  */
+/**
+ * Whether a dashboard card shows its real value to the current account. The
+ * admin sees all; an account never configured keeps seeing all values.
+ */
+export function canSeeDashCard(perms: Permissions | null, card: DashCard): boolean {
+  if (perms === null) return true;
+  // Without the dashboard permission every card shows zero.
+  if (!perms.dashboard?.length) return false;
+  if (!perms.dashCards) return true;
+  return perms.dashCards.includes(card);
+}
+
 export function canSeeAptField(perms: Permissions | null, field: AptField): boolean {
   if (perms === null) return true;
   if (!perms.aptFields) return true;

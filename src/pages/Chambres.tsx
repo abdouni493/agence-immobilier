@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BedDouble, Plus, Pencil, Trash2, Wrench, Eye, Layers, Tag, Users, Check, X,
   MapPin, Home, Tags, Handshake, Sofa, CalendarDays, CalendarRange,
   ImagePlus, Loader2, RotateCcw, Archive, ImageIcon, ChevronLeft, ChevronRight,
-  Phone, Mail, IdCard, Briefcase, KeyRound,
+  Phone, Mail, IdCard, Briefcase, KeyRound, Maximize2,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can, canSeeAptField } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -1148,6 +1149,18 @@ function PhotoGallery({ photos }: { photos: string[] }) {
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(false);
 
+  // Esc closes the full-screen photo, arrows browse.
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); setZoom(false); }
+      else if (e.key === 'ArrowRight') setIndex((i) => (i + 1) % Math.max(1, photos.length));
+      else if (e.key === 'ArrowLeft') setIndex((i) => (i - 1 + photos.length) % Math.max(1, photos.length));
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [zoom, photos.length]);
+
   if (photos.length === 0) {
     return (
       <div className="grid h-40 place-items-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 text-ink-muted">
@@ -1180,6 +1193,14 @@ function PhotoGallery({ photos }: { photos: string[] }) {
             className="mx-auto max-h-[320px] w-full cursor-zoom-in object-contain"
             onClick={() => setZoom(true)}
           />
+          <button
+            type="button"
+            onClick={() => setZoom(true)}
+            className="absolute bottom-2 end-2 flex items-center gap-1.5 rounded-full bg-black/60 px-3 h-8 text-xs font-semibold text-white hover:bg-black/80"
+            title={t('apt.fullScreen')}
+          >
+            <Maximize2 size={14} /> {t('apt.fullScreen')}
+          </button>
           {photos.length > 1 && (
             <>
               <button
@@ -1208,6 +1229,7 @@ function PhotoGallery({ photos }: { photos: string[] }) {
                 key={url + i}
                 type="button"
                 onClick={() => setIndex(i)}
+                onDoubleClick={() => { setIndex(i); setZoom(true); }}
                 className={cn(
                   'h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 transition-all',
                   i === index ? 'border-brand-500 ring-2 ring-brand-500/20' : 'border-slate-200 opacity-70 hover:opacity-100',
@@ -1220,27 +1242,60 @@ function PhotoGallery({ photos }: { photos: string[] }) {
         )}
       </div>
 
-      {/* Full-screen viewer */}
-      <AnimatePresence>
-        {zoom && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] grid place-items-center bg-black/90 p-6"
-            onClick={() => setZoom(false)}
-          >
-            <img src={current} alt="" className="max-h-full max-w-full object-contain" />
-            <button
-              type="button"
+      {/* Full-screen viewer — rendered in <body> so the details modal (which
+          is transformed / clipped) cannot trap it. */}
+      {createPortal(
+        <AnimatePresence>
+          {zoom && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[1000] grid place-items-center bg-black/95 p-4 sm:p-10"
               onClick={() => setZoom(false)}
-              className="absolute end-5 top-5 grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25"
+              role="dialog"
+              aria-modal="true"
             >
-              <X size={20} />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <img
+                src={current}
+                alt=""
+                className="max-h-full max-w-full object-contain rounded-lg shadow-2xl select-none"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setZoom(false); }}
+                className="absolute end-4 top-4 flex items-center gap-2 rounded-full bg-white/15 px-4 h-11 text-sm font-semibold text-white hover:bg-white/30 backdrop-blur"
+                title={t('common.close')}
+              >
+                <X size={20} /> {t('common.close')}
+              </button>
+              {photos.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); go(-1); }}
+                    className="absolute start-4 top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white hover:bg-white/30"
+                  >
+                    <ChevronLeft size={24} className="rtl:rotate-180" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); go(1); }}
+                    className="absolute end-4 top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white hover:bg-white/30"
+                  >
+                    <ChevronRight size={24} className="rtl:rotate-180" />
+                  </button>
+                  <span className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white">
+                    {Math.min(index, photos.length - 1) + 1} / {photos.length}
+                  </span>
+                </>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </>
   );
 }

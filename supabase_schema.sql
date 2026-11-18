@@ -175,6 +175,9 @@ CREATE TABLE IF NOT EXISTS public.reservations (
   termination_reason text,
   terminated_by      text CHECK (terminated_by IS NULL OR terminated_by = ANY (ARRAY['tenant'::text, 'owner'::text])),
   termination_place  text,
+  -- Bon de récupération: amount given back to the client and its date.
+  refund_amount      numeric,
+  refund_date        date,
   created_at     timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT reservations_pkey PRIMARY KEY (id),
   CONSTRAINT reservations_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE RESTRICT

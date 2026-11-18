@@ -26,7 +26,8 @@ import { useToday } from '@/lib/useToday';
 import { clientName, reservationRoomLabels, expenseCategoryName, clientById, rentalPeriodOf } from '@/lib/lookups';
 import { Link } from 'react-router-dom';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
-import type { Reservation } from '@/types';
+import type { Reservation, DashCard } from '@/types';
+import { useCurrentPermissions, canSeeDashCard } from '@/store/appStore';
 
 export default function Dashboard() {
   const { t, lang } = useI18n();
@@ -85,18 +86,22 @@ export default function Dashboard() {
   const recentTx = data.cashTransactions.slice(0, 5);
   const recentExp = data.expenses.slice(0, 5);
 
+  /** Dashboard cards whose real value this account may see (admin: all). */
+  const dashPerms = useCurrentPermissions();
+  const seeCard = (c: DashCard) => canSeeDashCard(dashPerms, c);
+
   const kpiCards = [
-    { label: t('dash.revenue'), value: kpis.monthRevenue, icon: <TrendingUp size={22} />, gradient: 'success' as const, format: formatDA, to: '/app/caisse' },
-    { label: t('dash.expenses'), value: kpis.monthExpenses, icon: <TrendingDown size={22} />, gradient: 'warning' as const, format: formatDA, to: '/app/expenses' },
-    { label: t('dash.balance'), value: kpis.balance, icon: <Wallet size={22} />, gradient: 'secondary' as const, format: formatDA, to: '/app/caisse' },
-    { label: t('dash.debts'), value: kpis.clientDebts, icon: <AlertCircle size={22} />, gradient: 'gold' as const, format: formatDA, to: '/app/reservations' },
-    { label: t('dash.roomsAvailable'), value: kpis.roomsAvailable, icon: <BedDouble size={22} />, gradient: 'primary' as const, suffix: `/ ${kpis.roomsTotal}`, to: '/app/chambres' },
-    { label: t('dash.activeReservations'), value: kpis.activeToday, icon: <CalendarCheck size={22} />, gradient: 'purple' as const, to: '/app/reservations' },
-    { label: t('dash.occupancy'), value: kpis.occupancy, icon: <PieIcon size={22} />, gradient: 'cyan' as const, suffix: '%', to: '/app/chambres' },
-    { label: t('dash.maintenance'), value: kpis.roomsMaintenance, icon: <Wrench size={22} />, gradient: 'warning' as const, to: '/app/chambres' },
-    { label: t('dash.totalClients'), value: kpis.totalClients, icon: <Users size={22} />, gradient: 'rose' as const, to: '/app/clients' },
-    { label: t('dash.activeWorkers'), value: kpis.activeWorkers, icon: <HardHat size={22} />, gradient: 'teal' as const, to: '/app/workers' },
-    { label: t('dash.monthReservations'), value: kpis.monthReservations, icon: <CalendarDays size={22} />, gradient: 'purple' as const, to: '/app/reservations' },
+    { card: 'revenue' as DashCard, label: t('dash.revenue'), value: kpis.monthRevenue, icon: <TrendingUp size={22} />, gradient: 'success' as const, format: formatDA, to: '/app/caisse' },
+    { card: 'expenses' as DashCard, label: t('dash.expenses'), value: kpis.monthExpenses, icon: <TrendingDown size={22} />, gradient: 'warning' as const, format: formatDA, to: '/app/expenses' },
+    { card: 'balance' as DashCard, label: t('dash.balance'), value: kpis.balance, icon: <Wallet size={22} />, gradient: 'secondary' as const, format: formatDA, to: '/app/caisse' },
+    { card: 'debts' as DashCard, label: t('dash.debts'), value: kpis.clientDebts, icon: <AlertCircle size={22} />, gradient: 'gold' as const, format: formatDA, to: '/app/reservations' },
+    { card: 'roomsAvailable' as DashCard, label: t('dash.roomsAvailable'), value: kpis.roomsAvailable, icon: <BedDouble size={22} />, gradient: 'primary' as const, suffix: `/ ${seeCard('roomsAvailable') ? kpis.roomsTotal : 0}`, to: '/app/chambres' },
+    { card: 'activeReservations' as DashCard, label: t('dash.activeReservations'), value: kpis.activeToday, icon: <CalendarCheck size={22} />, gradient: 'purple' as const, to: '/app/reservations' },
+    { card: 'occupancy' as DashCard, label: t('dash.occupancy'), value: kpis.occupancy, icon: <PieIcon size={22} />, gradient: 'cyan' as const, suffix: '%', to: '/app/chambres' },
+    { card: 'maintenance' as DashCard, label: t('dash.maintenance'), value: kpis.roomsMaintenance, icon: <Wrench size={22} />, gradient: 'warning' as const, to: '/app/chambres' },
+    { card: 'totalClients' as DashCard, label: t('dash.totalClients'), value: kpis.totalClients, icon: <Users size={22} />, gradient: 'rose' as const, to: '/app/clients' },
+    { card: 'activeWorkers' as DashCard, label: t('dash.activeWorkers'), value: kpis.activeWorkers, icon: <HardHat size={22} />, gradient: 'teal' as const, to: '/app/workers' },
+    { card: 'monthReservations' as DashCard, label: t('dash.monthReservations'), value: kpis.monthReservations, icon: <CalendarDays size={22} />, gradient: 'purple' as const, to: '/app/reservations' },
   ];
 
   const hasAlerts = debtClients.length || expiringToday.length || maintRooms.length;
@@ -132,14 +137,15 @@ export default function Dashboard() {
         animate="animate"
         className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
       >
-        {kpiCards.map((c) => (
-          <StatsCard key={c.label} {...c} />
+        {kpiCards.map(({ card, ...c }) => (
+          // A card the account may not see stays in place but shows zero.
+          <StatsCard key={c.label} {...c} value={seeCard(card) ? c.value : 0} />
         ))}
         {/* Top service - text card */}
         <StatsCard
           label={t('dash.topService')}
           value={0}
-          textValue={kpis.topService}
+          textValue={seeCard('topService') ? kpis.topService : '0'}
           icon={<Sparkles size={22} />}
           gradient="gold"
           to="/app/services"

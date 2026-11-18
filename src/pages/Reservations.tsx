@@ -4,7 +4,7 @@ import {
   CalendarCheck, Plus, CalendarRange, Eye, Pencil, Printer, CreditCard, User, Phone,
   Building2, CalendarDays, Wallet, Trash2, CheckCircle2, PlayCircle,
   Mail, MapPin, Clock, ShieldCheck, DollarSign, FileText, Hourglass,
-  FileSignature, Receipt, ChevronRight, Briefcase, HardHat, FileX, Ban,
+  FileSignature, Receipt, ChevronRight, Briefcase, HardHat, FileX, Ban, Undo2,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -29,10 +29,10 @@ import { formatDA, formatDate, formatDateLong, rangesOverlap, todayISO, addDaysI
 import { reservationPeriod, rentalPeriodOf } from '@/lib/lookups';
 import { useToday } from '@/lib/useToday';
 import { clientName, reservationRoomLabels, clientById } from '@/lib/lookups';
-import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVersementHTML, buildTerminationHTML, printDoc, printHTML, type TerminationLang } from '@/lib/print';
+import { buildReservationPaymentReceiptHTML, buildRentalContractHTML, buildVersementHTML, buildTerminationHTML, buildRefundHTML, printDoc, printHTML, type TerminationLang } from '@/lib/print';
 import type { Reservation, Payment, TerminationParty } from '@/types';
 
-type PrintKind = 'contract' | 'versement' | 'termination';
+type PrintKind = 'contract' | 'versement' | 'termination' | 'refund';
 
 /** Name of the employee holding the agency-fee commission of a location. */
 function workerName(data: ReturnType<typeof useAppData>, id?: string): string {
@@ -60,6 +60,7 @@ export default function Reservations() {
   const perms = useCurrentPermissions();
   const deleteReservation = useApp((s) => s.deleteReservation);
   const updateReservation = useApp((s) => s.updateReservation);
+  const refundReservation = useApp((s) => s.refundReservation);
 
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState<Period>('all');
@@ -75,6 +76,8 @@ export default function Reservations() {
   const [clotureFor, setClotureFor] = useState<Reservation | null>(null);
   const [activateFor, setActivateFor] = useState<Reservation | null>(null);
   const [printChoice, setPrintChoice] = useState<Reservation | null>(null);
+  /** Rental whose paid amount is about to be given back (bon de récupération). */
+  const [refundFor, setRefundFor] = useState<Reservation | null>(null);
   const [terminateFor, setTerminateFor] = useState<Reservation | null>(null);
   const [printTermination, setPrintTermination] = useState<Reservation | null>(null);
   // Termination letter: the user first picks French or Arabic.
@@ -153,6 +156,7 @@ export default function Reservations() {
   const doPrint = (r: Reservation, kind: PrintKind) => {
     if (kind === 'contract') printDoc(`${r.code}-contrat`, () => buildRentalContractHTML(data, r, storeInfo));
     else if (kind === 'termination') { setPrintChoice(null); setTermLangFor(r); return; }
+    else if (kind === 'refund') printDoc(`${r.code}-recuperation`, () => buildRefundHTML(data, r, storeInfo));
     else printDoc(`${r.code}-versement`, () => buildVersementHTML(data, r, storeInfo));
     setPrintChoice(null);
   };
@@ -160,6 +164,17 @@ export default function Reservations() {
   const printTerminationIn = (r: Reservation, l: TerminationLang) => {
     printHTML(`${r.code}-resiliation-${l}`, buildTerminationHTML(data, r, storeInfo, l), l);
     setTermLangFor(null);
+  };
+
+  /** Gives the paid amount back, removes the versements from the caisse,
+   *  cancels the rental, then prints the bon de récupération (FR / AR). */
+  const handleRefund = async () => {
+    if (!refundFor) return;
+    const amount = await refundReservation(refundFor.id, todayISO());
+    if (amount == null) { toast.error(t('toast.error')); return; }
+    toast.success(t('res.refundDone', { amount: formatDA(amount) }));
+    const updated = useApp.getState().reservations.find((x) => x.id === refundFor.id);
+    if (updated) printDoc(`${updated.code}-recuperation`, () => buildRefundHTML(data, updated, storeInfo));
   };
 
   const handleActivate = async () => {
@@ -400,6 +415,16 @@ export default function Reservations() {
                           <Printer size={15} />
                         </button>
                       )}
+                      {/* "Bon de récupération" — gives the paid amount back to the client */}
+                      {can(perms, 'reservations', 'pay') && r.status !== 'cancelled' && reservationPaid(r) > 0 && (
+                        <button
+                          onClick={() => setRefundFor(r)}
+                          className="btn-card-action btn-action-print"
+                          title={t('res.refund')}
+                        >
+                          <Undo2 size={15} />
+                        </button>
+                      )}
                       {can(perms, 'reservations', 'pay') && remaining > 0 && (
                         <button
                           onClick={() => setPayFor(r)}
@@ -494,6 +519,16 @@ export default function Reservations() {
         onConfirm={handleDeleteOne}
         title="Supprimer la location"
         message={`Supprimer ${deleteOne?.code} ? Cette action est irréversible.`}
+      />
+
+      {/* Refund (bon de récupération) confirm */}
+      <ConfirmDialog
+        open={!!refundFor}
+        onClose={() => setRefundFor(null)}
+        onConfirm={handleRefund}
+        title={t('res.refund')}
+        confirmLabel={t('res.refundConfirm')}
+        message={refundFor ? t('res.refundMsg', { code: refundFor.code, amount: formatDA(reservationPaid(refundFor)) }) : ''}
       />
 
       {/* Activate confirm */}
@@ -1298,6 +1333,9 @@ function PrintChoiceModal({
     { kind: 'contract', icon: <FileSignature size={22} />, title: t('res.printContract'), desc: t('res.printContractDesc'), tone: 'from-sky-500 to-blue-600' },
     { kind: 'versement', icon: <Receipt size={22} />, title: t('res.printVersement'), desc: t('res.printVersementDesc'), tone: 'from-emerald-500 to-teal-600' },
   ];
+  if (reservation?.refundAmount) {
+    options.push({ kind: 'refund', icon: <Undo2 size={22} />, title: t('res.printRefund'), desc: t('res.printRefundDesc'), tone: 'from-rose-500 to-pink-600' });
+  }
   if (reservation?.status === 'terminated') {
     options.push({ kind: 'termination', icon: <FileX size={22} />, title: t('res.printTermination'), desc: t('res.printTerminationDesc'), tone: 'from-amber-600 to-yellow-700' });
   }
