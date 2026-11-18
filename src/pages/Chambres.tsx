@@ -4,7 +4,7 @@ import {
   BedDouble, Plus, Pencil, Trash2, Wrench, Eye, Layers, Tag, Users, Check, X,
   MapPin, Home, Tags, Handshake, Sofa, CalendarDays, CalendarRange,
   ImagePlus, Loader2, RotateCcw, Archive, ImageIcon, ChevronLeft, ChevronRight,
-  Phone, Mail, IdCard, Briefcase,
+  Phone, Mail, IdCard, Briefcase, KeyRound,
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -16,6 +16,8 @@ import { GradientCard } from '@/components/ui/GradientCard';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { PrintPrompt } from '@/components/ui/PrintPrompt';
+import { printDoc, buildKeyHandoverHTML } from '@/lib/print';
 import { TextField, SelectField, SegmentedControl, TextArea } from '@/components/ui/Field';
 import { MediatorPicker } from '@/components/forms/MediatorPicker';
 import { effectiveRoomStatus, reservationPaid } from '@/store/selectors';
@@ -49,6 +51,7 @@ export default function Chambres() {
   const deleteFloor = useApp((s) => s.deleteFloor);
   const addCategory = useApp((s) => s.addCategory);
   const deleteCategory = useApp((s) => s.deleteCategory);
+  const storeInfo = useApp((s) => s.storeInfo);
 
   const today = todayISO();
   const [availability, setAvailability] = useState<AvailabilityFilter>('available');
@@ -63,6 +66,17 @@ export default function Chambres() {
   const [maintRoom, setMaintRoom] = useState<Room | null>(null);
   const [detailRoom, setDetailRoom] = useState<Room | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
+  /** Apartment just created with an owner: offer to print the key handover. */
+  const [keyAsk, setKeyAsk] = useState<Room | null>(null);
+
+  const hasOwner = (r: Room) => !!(r.ownerName || r.ownerClientId);
+  /** Asks FR / AR, then prints the key handover contract (عقد إستلام مفتاح الشقة). */
+  const printKeyHandover = (r: Room) => {
+    // Always print from the freshest copy of the apartment.
+    const fresh = data.rooms.find((x) => x.id === r.id) ?? r;
+    if (!hasOwner(fresh)) return toast.error(t('apt.keyNoOwner'));
+    printDoc(`${fresh.name}-cles`, () => buildKeyHandoverHTML(data, fresh, storeInfo));
+  };
 
   // Soft-deleted apartments live in the corbeille, never in the main grid.
   const liveRooms = useMemo(() => activeRooms(rooms), [rooms]);
@@ -279,6 +293,11 @@ export default function Chambres() {
                       {t('common.details')}
                     </GradientButton>
                     <div className="flex-1" />
+                    {hasOwner(room) && (
+                      <button onClick={() => printKeyHandover(room)} title={t('apt.keyDoc')} className="btn-card-action btn-action-print">
+                        <KeyRound size={15} />
+                      </button>
+                    )}
                     {can(perms, 'chambres', 'edit') && status !== 'maintenance' && (
                       <button onClick={() => setMaintRoom(room)} title={t('rooms.setMaintenance')} className="btn-card-action btn-action-maint">
                         <Wrench size={15} />
@@ -317,11 +336,23 @@ export default function Chambres() {
           onClose={() => setFormOpen(false)}
           onSave={async (payload) => {
             if (formRoom) { await updateRoom(formRoom.id, payload); toast.success(t('toast.updated')); }
-            else { await addRoom(payload); toast.success(t('toast.created')); }
+            else {
+              const created = await addRoom(payload);
+              toast.success(t('toast.created'));
+              if (created && hasOwner(created)) setKeyAsk(created);
+            }
             setFormOpen(false);
           }}
         />
       )}
+
+      <PrintPrompt
+        open={!!keyAsk}
+        onClose={() => setKeyAsk(null)}
+        onConfirm={() => { if (keyAsk) printKeyHandover(keyAsk); }}
+        title={t('apt.keyPrintTitle')}
+        message={t('apt.keyPrintMsg')}
+      />
 
       <ManageListModal
         open={manageFloors}

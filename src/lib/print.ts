@@ -1,10 +1,10 @@
 import type { AppData } from '@/data/seed';
-import type { Reservation, Sale, Purchase, Mediator, Payment, Client, StoreInfo } from '@/types';
+import type { Reservation, Sale, Purchase, Mediator, Payment, Client, StoreInfo, Room } from '@/types';
 import {
   reservationPaid, reservationRemaining, salePaid, saleRemaining,
   purchasePaid, purchaseRemaining, mediatorStats,
 } from '@/store/selectors';
-import { formatDA, formatDate as fmtDate } from './utils';
+import { formatDA, formatDate as fmtDate, todayISO } from './utils';
 import { askPrintLang, type PrintLang } from './printLang';
 import { clientById, serviceName, mediatorName, reservationPeriod } from './lookups';
 import {
@@ -182,6 +182,28 @@ export const PRINT_STYLES = `
   .sign-box .who { font-size: 10.5px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .5px; }
   .sign-box .line { margin-top: 40px; border-top: 1px solid #94a3b8; padding-top: 5px; font-size: 10px; color: #94a3b8; }
   .sign-box.stamp-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+  /* Signature row with even boxes: a blank area to sign / stamp, then the
+     signer's name on a line. The agency stamp is a plain blank place (no
+     drawn circle) so the real rubber stamp can be applied on paper. */
+  .sign-grid.even { align-items: start; }
+  .sign-grid.two { grid-template-columns: 1fr 1fr; gap: 40px; }
+  .sign-grid.even .sign-space { height: 74px; }
+  .sign-grid.even .line { margin-top: 0; color: #0f172a; font-weight: 700; font-size: 10.5px; }
+  .doc.compact .sign-grid.even .sign-space { height: 62px; }
+  .vs-totals { width: auto; margin: 0; }
+  .doc.compact.vs-doc .clauses li { margin-bottom: 1px; }
+
+  /* Header variant: agency info on one side, name centred, the logo in a
+     circle on the other side (right in French, left in Arabic via RTL). */
+  .head-row.side-logo { grid-template-columns: 1fr auto 1fr; }
+  .head-row.side-logo .head-logo { justify-self: end; }
+  .logo-circle { width: 104px; height: 104px; border-radius: 50%; border: 3px solid #0284c7; box-shadow: 0 0 0 3px #bae6fd; background: #fff; overflow: hidden; display: grid; place-items: center; }
+  .logo-circle img { width: 100%; height: 100%; object-fit: contain; padding: 7px; }
+  .logo-circle .logo-placeholder { width: 100%; height: 100%; border-radius: 50%; font-size: 38px; }
+  .doc.compact .logo-circle { width: 96px; height: 96px; }
+  .head-legal { margin-top: 4px; font-size: 9.5px; font-weight: 700; color: #0f172a; }
+  .head-legal .lbl { color: #0284c7; }
 
   /* ── Compact one-page mode (contrat + bon de versement) ─────────────────────
      Tightens every vertical rhythm so the whole document fits on a single A4
@@ -411,7 +433,10 @@ function tel(number?: string, label = tr('Tél :', 'الهاتف :')): string {
  * left and its legal identifiers on the right (all in bold), then a band
  * carrying the document kind, its number and its date.
  */
-function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: string): string {
+function docHeader(
+  store: StoreInfo, code: string, dateLabel: string, docTitle: string,
+  opts: { sideLogo?: boolean } = {},
+): string {
   const logoHtml = store.logo
     ? `<img src="${store.logo}" alt="logo" />`
     : `<div class="logo-placeholder">${store.name.charAt(0)}</div>`;
@@ -421,12 +446,42 @@ function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: 
     store.phone && `<p><span class="lbl">${tr('Tél :', 'الهاتف :')}</span> ${store.phone}</p>`,
     store.email && `<p><span class="lbl">${tr('Email :', 'البريد :')}</span> ${store.email}</p>`,
   ].filter(Boolean).join('');
-  const legalLines = [
-    store.rc && `<p><span class="lbl">RC :</span> ${store.rc}</p>`,
-    store.nif && `<p><span class="lbl">NIF :</span> ${store.nif}</p>`,
-    store.nis && `<p><span class="lbl">NIS :</span> ${store.nis}</p>`,
-    store.article && `<p><span class="lbl">Art :</span> ${store.article}</p>`,
-  ].filter(Boolean).join('');
+  const legal: [string, string | undefined][] = [
+    ['RC', store.rc], ['NIF', store.nif], ['NIS', store.nis], ['Art', store.article],
+  ];
+  const legalLines = legal
+    .filter(([, v]) => v)
+    .map(([k, v]) => `<p><span class="lbl">${k} :</span> ${v}</p>`)
+    .join('');
+  const band = `
+      <div class="doc-band">
+        <span class="kind">${docTitle}</span>
+        <span class="code">${tr('N°', 'رقم')} <bdi dir="ltr">${code}</bdi></span>
+        <span class="date">${dateLabel}</span>
+      </div>`;
+
+  if (opts.sideLogo) {
+    // Agency details on the start side, name centred, round logo on the end
+    // side: right in French, left in Arabic (the grid follows the RTL flow).
+    const legalInline = legal
+      .filter(([, v]) => v)
+      .map(([k, v]) => `<bdi dir="ltr"><span class="lbl">${k} :</span> ${v}</bdi>`)
+      .join(' &nbsp;·&nbsp; ');
+    return `
+    <div class="head">
+      <div class="head-row side-logo">
+        <div class="head-side left">${contactLines}</div>
+        <div class="head-center">
+          <h1 class="brand-name">${store.name}</h1>
+          ${store.description ? `<p class="brand-desc">${store.description}</p>` : ''}
+          ${legalInline ? `<p class="head-legal">${legalInline}</p>` : ''}
+        </div>
+        <div class="head-logo"><div class="logo-circle">${logoHtml}</div></div>
+      </div>
+      ${band}
+    </div>`;
+  }
+
   return `
     <div class="head">
       <div class="head-row">
@@ -438,11 +493,41 @@ function docHeader(store: StoreInfo, code: string, dateLabel: string, docTitle: 
         </div>
         <div class="head-side right">${legalLines}</div>
       </div>
-      <div class="doc-band">
-        <span class="kind">${docTitle}</span>
-        <span class="code">${tr('N°', 'رقم')} <bdi dir="ltr">${code}</bdi></span>
-        <span class="date">${dateLabel}</span>
-      </div>
+      ${band}
+    </div>`;
+}
+
+/**
+ * Signature row of the contract-style documents: tenant on the start side,
+ * a blank place for the agency stamp in the middle (no drawn circle), and the
+ * owner of the apartment — with their full name — on the end side.
+ */
+function ownerSignGrid(tenantName: string, ownerName: string): string {
+  return `
+    <div class="sign-grid even">
+      <div class="sign-box"><p class="who">${tr('Le Locataire', 'المستأجر')}</p><div class="sign-space"></div><div class="line">${tenantName || '&nbsp;'}</div></div>
+      <div class="sign-box"><p class="who">${tr("Cachet de l'agence", 'ختم الوكالة')}</p><div class="sign-space"></div><div class="line">${tr('Cachet et signature', 'الختم والتوقيع')}</div></div>
+      <div class="sign-box"><p class="who">${tr('Le Propriétaire', 'المالك')}</p><div class="sign-space"></div><div class="line">${ownerName || '&nbsp;'}</div></div>
+    </div>`;
+}
+
+/** General conditions of a rental, shared by the contract and the versement. */
+function rentalClauses(data: AppData, r: Reservation, extra: string[] = []): string {
+  const fee = r.agencyFee ?? 0;
+  const items = [
+    ...extra,
+    tr(`La présente location est consentie pour la période du ${formatDate(r.checkIn)} au ${formatDate(r.checkOut)}, soit ${durationLabel(data, r)}.`, `يمنح هذا الكراء للفترة الممتدة من ${formatDate(r.checkIn)} إلى ${formatDate(r.checkOut)}، أي ${durationLabel(data, r)}.`),
+    tr(`Le montant total de la location s'élève à ${formatDA(r.total)}${fee > 0 ? `, dont ${formatDA(fee)} de frais d'agence` : ''}, payable selon l'échéancier convenu entre les parties.`, `يبلغ المبلغ الإجمالي للكراء ${formatDA(r.total)}${fee > 0 ? `، منها ${formatDA(fee)} أتعاب الوكالة` : ''}، يدفع حسب الجدول المتفق عليه بين الطرفين.`),
+    fee > 0 && tr(`Les frais d'agence de ${formatDA(fee)} rémunèrent l'intermédiation de l'agence et restent acquis à celle-ci.`, `أتعاب الوكالة البالغة ${formatDA(fee)} مقابل وساطة الوكالة وتبقى مكتسبة لها.`),
+    tr("Le locataire s'engage à occuper le bien loué paisiblement et à le restituer dans l'état où il l'a reçu.", 'يلتزم المستأجر بشغل العقار المؤجر بهدوء وإرجاعه بالحالة التي استلمه عليها.'),
+    tr('Toute prolongation au-delà de la date de départ pourra donner lieu à une facturation supplémentaire au tarif en vigueur.', 'كل تمديد بعد تاريخ الخروج قد يترتب عنه فوترة إضافية حسب التسعيرة المعمول بها.'),
+    tr('Le locataire demeure responsable de toute dégradation causée au bien pendant la durée de la location.', 'يبقى المستأجر مسؤولا عن أي ضرر يلحق بالعقار خلال مدة الكراء.'),
+    tr('Établi en trois exemplaires originaux, un pour chaque partie.', 'حرر في ثلاث نسخ أصلية، نسخة لكل طرف.'),
+  ].filter(Boolean);
+  return `
+    <div class="clauses">
+      <h4>${tr('Conditions générales', 'الشروط العامة')}</h4>
+      <ol>${items.map((i) => `<li>${i}</li>`).join('')}</ol>
     </div>`;
 }
 
@@ -1051,7 +1136,7 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
 
   return `
   <div class="doc compact">
-    ${docHeader(store, r.code, `${tr('Établi le', 'حرر في')} ${formatDate(r.createdAt)}`, tr('Contrat de Location', 'عقد كراء'))}
+    ${docHeader(store, r.code, `${tr('Établi le', 'حرر في')} ${formatDate(r.createdAt)}`, tr('Contrat de Location', 'عقد كراء'), { sideLogo: true })}
 
     <!-- Parties: the agency (mandataire), the owner of the apartment, the tenant -->
     <div class="parties" style="grid-template-columns:1fr 1fr 1fr">
@@ -1100,29 +1185,11 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
 
     ${agencyFeeBox(data, r)}
 
-    <div class="clauses">
-      <h4>${tr('Conditions générales', 'الشروط العامة')}</h4>
-      <ol>
-        <li>${tr(`La présente location est consentie pour la période du ${formatDate(r.checkIn)} au ${formatDate(r.checkOut)}, soit ${durationLabel(data, r)}.`, `يمنح هذا الكراء للفترة الممتدة من ${formatDate(r.checkIn)} إلى ${formatDate(r.checkOut)}، أي ${durationLabel(data, r)}.`)}</li>
-        <li>${tr(`Le montant total de la location s'élève à ${formatDA(r.total)}${fee > 0 ? `, dont ${formatDA(fee)} de frais d'agence` : ''}, payable selon l'échéancier convenu entre les parties.`, `يبلغ المبلغ الإجمالي للكراء ${formatDA(r.total)}${fee > 0 ? `، منها ${formatDA(fee)} أتعاب الوكالة` : ''}، يدفع حسب الجدول المتفق عليه بين الطرفين.`)}</li>
-        ${fee > 0 ? `<li>${tr(`Les frais d'agence de ${formatDA(fee)} rémunèrent l'intermédiation de l'agence et restent acquis à celle-ci.`, `أتعاب الوكالة البالغة ${formatDA(fee)} مقابل وساطة الوكالة وتبقى مكتسبة لها.`)}</li>` : ''}
-        <li>${tr("Le locataire s'engage à occuper le bien loué paisiblement et à le restituer dans l'état où il l'a reçu.", 'يلتزم المستأجر بشغل العقار المؤجر بهدوء وإرجاعه بالحالة التي استلمه عليها.')}</li>
-        <li>${tr('Toute prolongation au-delà de la date de départ pourra donner lieu à une facturation supplémentaire au tarif en vigueur.', 'كل تمديد بعد تاريخ الخروج قد يترتب عنه فوترة إضافية حسب التسعيرة المعمول بها.')}</li>
-        <li>${tr('Le locataire demeure responsable de toute dégradation causée au bien pendant la durée de la location.', 'يبقى المستأجر مسؤولا عن أي ضرر يلحق بالعقار خلال مدة الكراء.')}</li>
-        <li>${tr('Le présent contrat est établi en deux exemplaires originaux, un pour chaque partie.', 'حرر هذا العقد في نسختين أصليتين، نسخة لكل طرف.')}</li>
-      </ol>
-    </div>
+    ${rentalClauses(data, r)}
 
     ${paymentsTable(r.payments)}
 
-    <div class="sign-grid">
-      <div class="sign-box"><p class="who">${tr('Le Locataire', 'المستأجر')}</p><div class="line">${client ? `${client.firstName} ${client.lastName}` : tr('Signature', 'التوقيع')}</div></div>
-      <div class="sign-box stamp-cell">
-        <p class="who">${tr("Cachet de l'agence", 'ختم الوكالة')}</p>
-        ${eStamp(store)}
-      </div>
-      <div class="sign-box"><p class="who">${tr('Le Bailleur', 'المؤجر')}</p><div class="line">${store.name}</div></div>
-    </div>
+    ${ownerSignGrid(client ? `${client.firstName} ${client.lastName}` : '', ownerData(data, mainRoomId).name)}
 
     <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
   </div>`;
@@ -1132,6 +1199,7 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
 
 export function buildVersementHTML(data: AppData, r: Reservation, store: StoreInfo): string {
   const client = clientById(data, r.clientId);
+  const clientName = client ? `${client.firstName} ${client.lastName}` : '';
   const paid = reservationPaid(r);
   const remaining = reservationRemaining(r);
   const fee = r.agencyFee ?? 0;
@@ -1142,18 +1210,21 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
     .filter(Boolean)
     .join(', ');
   const issueDate = r.payments[r.payments.length - 1]?.date ?? r.createdAt;
+  const row = (k: string, v: string, cls = '') =>
+    `<div class="row"><span>${k}</span><span class="${cls}">${v}</span></div>`;
 
+  // Laid out to fit on one A4 sheet: amount, the two parties, the rental and
+  // its totals side by side, the payments, the conditions, the signatures.
   return `
-  <div class="doc compact">
-    ${docHeader(store, r.code, `${tr('Établi le', 'حرر في')} ${formatDate(issueDate)}`, tr('Bon de Versement', 'وصل دفع'))}
+  <div class="doc compact vs-doc">
+    ${docHeader(store, r.code, `${tr('Établi le', 'حرر في')} ${formatDate(issueDate)}`, tr('Bon de Versement', 'وصل دفع'), { sideLogo: true })}
 
     <div class="amount-hero">
       <div class="lbl">${tr('Montant total versé', 'المبلغ الإجمالي المدفوع')}</div>
       <div class="val">${formatDA(paid)}</div>
-      <div class="words">${tr('Reçu de', 'استلمنا من')} ${client ? `${client.firstName} ${client.lastName}` : tr('la part du client', 'الزبون')} ${tr('la somme ci-dessus.', 'المبلغ المذكور أعلاه.')}</div>
+      <div class="words">${tr('Reçu de', 'استلمنا من')} ${clientName || tr('la part du client', 'الزبون')} ${tr('la somme ci-dessus.', 'المبلغ المذكور أعلاه.')}</div>
     </div>
 
-    <!-- Owner of the apartment + client who paid -->
     <div class="grid2">
       ${ownerSection(data, mainRoomId)}
       ${clientSection(client, tr('👤 Versé par (Client)', '👤 دفع من طرف (الزبون)'))}
@@ -1163,30 +1234,110 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
       <div class="section violet">
         <h3>📋 ${tr('Location', 'كراء')} ${r.code}</h3>
         <p><strong>${tr('Appartement(s) :', 'الشقق :')}</strong> ${roomsList || '—'}</p>
-        <p><strong>${tr('Séjour :', 'الإقامة :')}</strong> ${formatDate(r.checkIn)} → ${formatDate(r.checkOut)}</p>
+        <p><strong>${tr('Arrivée :', 'الدخول :')}</strong> ${formatDate(r.checkIn)} ${tr('à', 'على')} ${r.checkInTime}</p>
+        <p><strong>${tr('Départ :', 'الخروج :')}</strong> ${formatDate(r.checkOut)} ${tr('à', 'على')} ${r.checkOutTime}</p>
         <p><strong>${tr('Durée :', 'المدة :')}</strong> ${durationLabel(data, r)}</p>
       </div>
-      <div class="section green">
-        <h3>💰 ${tr('Détail du montant', 'تفاصيل المبلغ')}</h3>
-        <p><strong>${tr('Loyer :', 'الإيجار :')}</strong> ${formatDA(rentTotal)}</p>
-        ${fee > 0 ? `<p><strong>${tr("Frais d'agence :", 'أتعاب الوكالة :')}</strong> <span class="badge-fee">${formatDA(fee)}</span></p>` : ''}
-        <p><strong>${tr('Total location :', 'مجموع الكراء :')}</strong> ${formatDA(r.total)}</p>
+      <div class="totals-wrap vs-totals">
+        ${row(tr('Loyer', 'الإيجار'), formatDA(rentTotal))}
+        ${fee > 0 ? row(tr("Frais d'agence", 'أتعاب الوكالة'), formatDA(fee), 'badge-fee') : ''}
+        ${row(tr('Total location', 'مجموع الكراء'), `<strong>${formatDA(r.total)}</strong>`)}
+        ${row(tr('Total versé', 'مجموع المدفوع'), formatDA(paid), 'badge-paid')}
+        <div class="row grand"><span>${tr('Reste dû', 'الباقي')}</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
       </div>
     </div>
-
-    ${agencyFeeBox(data, r)}
 
     ${paymentsTable(r.payments)}
 
-    <div class="totals-wrap">
-      <div class="row"><span>${tr('Loyer', 'الإيجار')}</span><span>${formatDA(rentTotal)}</span></div>
-      ${fee > 0 ? `<div class="row"><span>${tr("Frais d'agence", 'أتعاب الوكالة')}</span><span class="badge-fee">${formatDA(fee)}</span></div>` : ''}
-      <div class="row"><span>${tr('Total location', 'مجموع الكراء')}</span><strong>${formatDA(r.total)}</strong></div>
-      <div class="row"><span>${tr('Total versé', 'مجموع المدفوع')}</span><span class="badge-paid">${formatDA(paid)}</span></div>
-      <div class="row grand"><span>${tr('Reste dû', 'الباقي')}</span><span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></div>
+    ${rentalClauses(data, r, [
+      tr("L'acompte (arrhes) n'est pas remboursable si le délai convenu de 48 heures est dépassé.", 'العربون لا يسترد إذا تجاوزت المدة المتفق عليها 48 ساعة.'),
+    ])}
+
+    ${ownerSignGrid(clientName, ownerData(data, mainRoomId).name)}
+
+    <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
+  </div>`;
+}
+
+// ─── Contrat de remise des clés / عقد إستلام مفتاح الشقة ─────────────────────
+
+/**
+ * Key handover contract: the owner of an apartment hands its keys over to the
+ * agency. Same charter, colours and header as the rental contract, with the
+ * agency and owner details, the apartment, the conditions and a signature /
+ * stamp place for both the owner and the agency.
+ */
+export function buildKeyHandoverHTML(data: AppData, room: Room, store: StoreInfo): string {
+  const o = ownerData(data, room.id);
+  const today = todayISO();
+  const code = `CLE-${room.id.slice(0, 6).toUpperCase()}`;
+  const title = tr('Contrat de Remise des Clés', 'عقد إستلام مفتاح الشقة');
+  const place = room.commune ?? '';
+  const fill = (k: string, v = '', ltr = false) =>
+    `<div class="tm-row"><span class="k">${k}</span><span class="tm-fill">${ltr && v ? `<bdi dir="ltr">${v}</bdi>` : v}</span></div>`;
+
+  const clauses = [
+    tr("L'agence reconnaît avoir reçu les clés de l'appartement désigné ci-dessus et s'engage à les conserver en lieu sûr.", 'تقر الوكالة باستلام مفاتيح الشقة المذكورة أعلاه وتلتزم بحفظها في مكان آمن.'),
+    tr('Les clés sont utilisées exclusivement pour les visites, la location ou la vente et la gestion du bien, dans le cadre du mandat confié par le propriétaire.', 'تستعمل المفاتيح حصريا لغرض المعاينة والكراء أو البيع وتسيير العقار، في إطار التفويض الممنوح من طرف المالك.'),
+    tr("L'agence s'engage à ne pas reproduire les clés ni à les remettre à un tiers sans l'accord du propriétaire, sauf aux locataires dans le cadre d'un contrat conclu par son intermédiaire.", 'تلتزم الوكالة بعدم نسخ المفاتيح أو تسليمها للغير دون موافقة المالك، باستثناء المستأجرين في إطار عقد مبرم عن طريقها.'),
+    tr('Le propriétaire peut récupérer ses clés à tout moment sur simple demande, contre décharge signée.', 'يحق للمالك استرجاع مفاتيحه في أي وقت بمجرد طلبه، مقابل وصل استلام موقع.'),
+    tr("En cas de perte des clés imputable à l'agence, celle-ci prend en charge leur remplacement.", 'في حالة ضياع المفاتيح بسبب الوكالة، تتحمل هذه الأخيرة تكاليف استبدالها.'),
+    tr('Établi en deux exemplaires originaux, un pour chaque partie.', 'حرر هذا العقد في نسختين أصليتين، نسخة لكل طرف.'),
+  ];
+
+  return `
+  <div class="doc compact">
+    ${docHeader(store, code, `${tr('Établi le', 'حرر في')} ${formatDate(today)}`, title, { sideLogo: true })}
+
+    <div class="doc-title-band">
+      <h2>${title}</h2>
+      <div class="sub">${tr('Remise des clés par le propriétaire à l\'agence', 'تسليم المفاتيح من طرف المالك إلى الوكالة')}</div>
     </div>
 
-    ${stampSection(store, tr('client', 'الزبون'))}
+    <div class="parties">
+      <div class="party">
+        <h3>${tr("L'Agence", 'الوكالة')}</h3>
+        <p class="role">${tr('Dépositaire des clés', 'مستلم المفاتيح')}</p>
+        <p><strong>${store.name}</strong></p>
+        ${store.address ? `<p>${store.address}</p>` : ''}
+        ${tel(store.phone)}
+        ${store.email ? `<p>${store.email}</p>` : ''}
+        ${store.rc ? `<p>RC : ${store.rc}${store.nif ? ` · NIF : ${store.nif}` : ''}</p>` : ''}
+      </div>
+      ${ownerParty(data, room.id)}
+    </div>
+
+    <div class="grid2">
+      ${apartmentSection(data, room.id)}
+      <div class="section green">
+        <h3>🔑 ${tr('Remise des clés', 'تسليم المفاتيح')}</h3>
+        ${fill(tr('Date de remise :', 'تاريخ التسليم :'), numDate(today), true)}
+        ${fill(tr('Nombre de clés :', 'عدد المفاتيح :'))}
+        ${fill(tr('Observations :', 'ملاحظات :'))}
+      </div>
+    </div>
+
+    <p class="tm-decl">${tr(
+      `Je soussigné(e) ${o.name || '……………………'}, propriétaire de l'appartement « ${room.name} »${place ? ` sis à ${place}` : ''}, déclare remettre les clés de ce bien à l'agence ${store.name}, qui en accuse réception.`,
+      `أنا الموقع(ة) أسفله السيد(ة) ${o.name || '……………………'}، مالك(ة) الشقة « ${room.name} »${place ? ` الكائنة بـ ${place}` : ''}، أصرح بأنني سلمت مفاتيح هذه الشقة إلى الوكالة ${store.name} التي تقر باستلامها.`,
+    )}</p>
+
+    <div class="clauses">
+      <h4>${tr('Conditions', 'الشروط')}</h4>
+      <ol>${clauses.map((c) => `<li>${c}</li>`).join('')}</ol>
+    </div>
+
+    <div class="tm-made">
+      ${fill(tr('Fait à :', 'حرر في :'), place)}
+      ${fill(tr('Le :', 'التاريخ :'), numDate(today), true)}
+    </div>
+
+    <div class="sign-grid even two">
+      <div class="sign-box"><p class="who">${tr('Signature et cachet du propriétaire', 'توقيع وختم المالك')}</p><div class="sign-space"></div><div class="line">${o.name || '&nbsp;'}</div></div>
+      <div class="sign-box"><p class="who">${tr("Cachet et signature de l'agence", 'ختم وتوقيع الوكالة')}</p><div class="sign-space"></div><div class="line">${store.name}</div></div>
+    </div>
+
+    <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
   </div>`;
 }
 

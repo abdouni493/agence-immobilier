@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Check, UserPlus, Search, ArrowLeft, ArrowRight, Building2,
   CalendarDays, Moon, Sparkles, UserCheck, X, ChevronLeft, ChevronRight,
-  AlertTriangle, Calendar, Users, FileText, Briefcase, Percent, HardHat,
+  AlertTriangle, Calendar, Users, FileText, Briefcase, Percent, HardHat, KeyRound,
 } from 'lucide-react';
 import { useApp } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -16,7 +16,7 @@ import { ResStatusBadge } from '@/components/ResStatusBadge';
 import { reservationPaid, reservationEnd } from '@/store/selectors';
 import { cn, formatDA, nightsBetween, monthsBetween, addMonthsISO, todayISO, initials } from '@/lib/utils';
 import { rentalPeriodOf, activeRooms } from '@/lib/lookups';
-import type { Reservation, ReservationService, ReservationStatus } from '@/types';
+import type { Reservation, ReservationService, ReservationStatus, Room } from '@/types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -242,6 +242,7 @@ export function ReservationWizard({
   const addClient        = useApp(s => s.addClient);
   const addReservation   = useApp(s => s.addReservation);
   const updateReservation = useApp(s => s.updateReservation);
+  const updateRoom       = useApp(s => s.updateRoom);
 
   const hasServices = data.services.length > 0;
 
@@ -258,6 +259,13 @@ export function ReservationWizard({
   const [clientId,       setClientId]       = useState<string | null>(editing?.clientId ?? null);
   const [creatingClient, setCreatingClient] = useState(false);
   const [clientSearch,   setClientSearch]   = useState('');
+
+  // ── Owner of the apartment (only asked when it has none yet) ──────────────
+  /** Picked owner: an existing client, or the free-text owner of another apartment. */
+  type OwnerPick = { key: string; name: string; phone: string; clientId?: string; fromRoom?: Room };
+  const [ownerPick,     setOwnerPick]     = useState<OwnerPick | null>(null);
+  const [creatingOwner, setCreatingOwner] = useState(false);
+  const [ownerSearch,   setOwnerSearch]   = useState('');
 
   const [services, setServices] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
@@ -382,6 +390,50 @@ export function ReservationWizard({
     ).slice(0, 8);
   }, [clientSearch, data.clients]);
 
+  /** Selected apartments that have no owner yet — they get the picked owner. */
+  const ownerlessRooms = useMemo(
+    () => roomIds.map(id => data.rooms.find(r => r.id === id)).filter((r): r is Room => !!r && !r.ownerName && !r.ownerClientId),
+    [roomIds, data.rooms],
+  );
+  const needsOwner = ownerlessRooms.length > 0;
+
+  /** Owners to search in: every client, plus free-text owners of other apartments. */
+  const ownerCandidates = useMemo(() => {
+    const list: OwnerPick[] = data.clients.map(c => ({ key: `c-${c.id}`, name: `${c.firstName} ${c.lastName}`, phone: c.phone, clientId: c.id }));
+    const seen = new Set<string>();
+    for (const r of data.rooms) {
+      if (!r.ownerName || r.ownerClientId) continue;
+      const k = `${r.ownerName.trim().toLowerCase()}|${r.ownerPhone ?? ''}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      list.push({ key: `r-${r.id}`, name: r.ownerName, phone: r.ownerPhone ?? '', fromRoom: r });
+    }
+    // Known owners first.
+    const owners = new Set(data.rooms.map(r => r.ownerClientId).filter(Boolean));
+    list.sort((a, b) => Number(!!b.fromRoom || owners.has(b.clientId)) - Number(!!a.fromRoom || owners.has(a.clientId)));
+    return list;
+  }, [data.clients, data.rooms]);
+
+  const filteredOwners = useMemo(() => {
+    const q = ownerSearch.trim().toLowerCase();
+    return (q ? ownerCandidates.filter(o => o.name.toLowerCase().includes(q) || o.phone.includes(q)) : ownerCandidates).slice(0, 6);
+  }, [ownerSearch, ownerCandidates]);
+
+  /** Assigns the picked owner to every selected apartment that has none. */
+  const assignOwner = async () => {
+    if (!ownerPick) return;
+    const src = ownerPick.fromRoom;
+    const patch: Partial<Room> = src
+      ? {
+          ownerName: src.ownerName, ownerPhone: src.ownerPhone, ownerPhone2: src.ownerPhone2,
+          ownerEmail: src.ownerEmail, ownerAddress: src.ownerAddress, ownerCity: src.ownerCity,
+          ownerProfession: src.ownerProfession, ownerDocumentType: src.ownerDocumentType,
+          ownerDocumentNumber: src.ownerDocumentNumber,
+        }
+      : { ownerClientId: ownerPick.clientId };
+    for (const room of ownerlessRooms) await updateRoom(room.id, patch);
+  };
+
   const hasConflict = useMemo(() => {
     if (!checkIn || !checkOut || checkOut <= checkIn || roomIds.length === 0) return false;
     return roomIds.some(roomId => {
@@ -409,6 +461,7 @@ export function ReservationWizard({
 
   const handleCreate = async () => {
     if (!clientId || roomIds.length === 0 || !checkIn || !checkOut) return;
+    await assignOwner();
 
     const resRooms = roomIds.map(id => {
       const room = data.rooms.find(r => r.id === id)!;
@@ -854,6 +907,84 @@ export function ReservationWizard({
                               )}
                             </div>
                           </>
+                        )}
+
+                        {/* Owner of the apartment — only when it has none yet */}
+                        {needsOwner && !creatingClient && (
+                          <div className="rounded-2xl border-2 border-amber-300/70 bg-amber-50/60 p-4 space-y-3">
+                            <div>
+                              <p className="flex items-center gap-2 text-sm font-bold text-ink-primary">
+                                <KeyRound size={16} className="text-amber-600" /> {t('res.ownerTitle')}
+                                <span className="text-xs font-medium text-ink-muted">· {ownerlessRooms.map(r => r.name).join(', ')}</span>
+                              </p>
+                              <p className="text-xs text-ink-secondary mt-1">{t('res.ownerHint')}</p>
+                            </div>
+                            {creatingOwner ? (
+                              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <ClientForm
+                                  submitLabel={t('res.newOwner')}
+                                  onCancel={() => setCreatingOwner(false)}
+                                  onSave={async form => {
+                                    const c = await addClient(form);
+                                    setOwnerPick({ key: `c-${c.id}`, name: `${c.firstName} ${c.lastName}`, phone: c.phone, clientId: c.id });
+                                    setCreatingOwner(false);
+                                    toast.success(t('toast.created'));
+                                  }}
+                                />
+                              </div>
+                            ) : ownerPick ? (
+                              <div className="flex items-center gap-3 rounded-xl border-2 border-emerald-400/50 bg-white p-3">
+                                <div className="grid h-10 w-10 place-items-center rounded-xl bg-grad-gold text-white text-xs font-bold shrink-0">
+                                  {initials(ownerPick.name)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-bold text-ink-primary flex items-center gap-1.5"><UserCheck size={15} className="text-emerald-600" /> {ownerPick.name}</p>
+                                  <p className="text-xs text-ink-muted">{ownerPick.phone} · {t('res.ownerSelected')}</p>
+                                </div>
+                                <button
+                                  onClick={() => setOwnerPick(null)}
+                                  className="text-xs font-semibold text-ink-secondary hover:text-rose-600 border border-slate-200 hover:border-rose-300 rounded-lg px-3 py-1.5 transition-all bg-white"
+                                >
+                                  {t('common.change')}
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex flex-col sm:flex-row gap-2.5">
+                                  <div className="relative flex-1">
+                                    <Search size={15} className="absolute inset-y-0 start-3.5 my-auto text-ink-muted pointer-events-none" />
+                                    <input
+                                      value={ownerSearch}
+                                      onChange={e => setOwnerSearch(e.target.value)}
+                                      placeholder={t('res.ownerSearch')}
+                                      className="w-full h-10 rounded-xl bg-white border-2 border-slate-200 ps-10 pe-4 text-sm text-ink-primary outline-none focus:border-amber-400 transition-all"
+                                    />
+                                  </div>
+                                  <GradientButton icon={<UserPlus size={16} />} onClick={() => setCreatingOwner(true)}>
+                                    {t('res.newOwner')}
+                                  </GradientButton>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[200px] overflow-y-auto pr-1">
+                                  {filteredOwners.map(o => (
+                                    <button
+                                      key={o.key}
+                                      onClick={() => setOwnerPick(o)}
+                                      className="flex items-center gap-2.5 rounded-xl border-2 border-slate-200 bg-white p-2.5 text-start hover:border-amber-400 hover:bg-amber-50 transition-all"
+                                    >
+                                      <span className="grid h-8 w-8 place-items-center rounded-lg bg-grad-gold text-white text-[10px] font-bold shrink-0">{initials(o.name)}</span>
+                                      <span className="min-w-0">
+                                        <span className="block text-sm font-semibold text-ink-primary truncate">{o.name}</span>
+                                        <span className="block text-xs text-ink-muted">{o.phone || '—'}</span>
+                                      </span>
+                                    </button>
+                                  ))}
+                                  {filteredOwners.length === 0 && (
+                                    <p className="col-span-full text-center text-xs text-ink-muted py-4">{t('common.noResults')}</p>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
