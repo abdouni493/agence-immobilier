@@ -345,6 +345,7 @@ export default function Chambres() {
           onAddFloor={addFloor}
           onAddCategory={addCategory}
           defaultMediatorId={formRoom ? undefined : myMediatorId}
+          showOwner={!formRoom || see('owner')}
           onClose={() => setFormOpen(false)}
           onSave={async (payload) => {
             if (formRoom) { await updateRoom(formRoom.id, payload); toast.success(t('toast.updated')); }
@@ -550,8 +551,11 @@ function PropertyTypeBadge({ type }: { type: PropertyType }) {
 }
 
 function RoomFormModal({
-  room, floors, categories, onAddFloor, onAddCategory, onClose, onSave, defaultMediatorId,
+  room, floors, categories, onAddFloor, onAddCategory, onClose, onSave, defaultMediatorId, showOwner = true,
 }: {
+  /** False when the account may not see the owner: the section is hidden
+   *  (the saved owner is kept unchanged). */
+  showOwner?: boolean;
   room: Room | null;
   /** Pre-selected mediator (the logged-in mediator creating the apartment). */
   defaultMediatorId?: string;
@@ -869,7 +873,7 @@ function RoomFormModal({
         </div>
 
         {/* Owner (free text — optional, same fields as a client) */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        {showOwner && <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-xs font-semibold text-ink-secondary mb-1 flex items-center gap-1.5">
             <Users size={14} className="text-brand-400" /> {t('apt.owner')}
           </p>
@@ -889,7 +893,7 @@ function RoomFormModal({
             </SelectField>
             <TextField label={t('apt.ownerDocNumber')} icon={<IdCard size={16} />} value={ownerDocumentNumber} onChange={(e) => setOwnerDocumentNumber(e.target.value)} />
           </div>
-        </div>
+        </div>}
 
         {/* Mediator — searches the mediator directory *and* the workers whose
             job title is "Médiateur" (see MediatorPicker). */}

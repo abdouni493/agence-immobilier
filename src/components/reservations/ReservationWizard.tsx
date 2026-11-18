@@ -5,7 +5,7 @@ import {
   CalendarDays, Moon, Sparkles, UserCheck, X, ChevronLeft, ChevronRight,
   AlertTriangle, Calendar, Users, FileText, Briefcase, Percent, HardHat, KeyRound,
 } from 'lucide-react';
-import { useApp } from '@/store/appStore';
+import { useApp, useCurrentPermissions, canSeeAptField } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
 import { useI18n } from '@/i18n';
 import { useToast } from '@/components/ui/Toast';
@@ -243,6 +243,9 @@ export function ReservationWizard({
   const addReservation   = useApp(s => s.addReservation);
   const updateReservation = useApp(s => s.updateReservation);
   const updateRoom       = useApp(s => s.updateRoom);
+  // Accounts not allowed to see apartment owners can still create one here,
+  // but never get the list of existing owners.
+  const canSeeOwners = canSeeAptField(useCurrentPermissions(), 'owner');
 
   const hasServices = data.services.length > 0;
 
@@ -951,7 +954,7 @@ export function ReservationWizard({
                             ) : (
                               <>
                                 <div className="flex flex-col sm:flex-row gap-2.5">
-                                  <div className="relative flex-1">
+                                  {canSeeOwners && <div className="relative flex-1">
                                     <Search size={15} className="absolute inset-y-0 start-3.5 my-auto text-ink-muted pointer-events-none" />
                                     <input
                                       value={ownerSearch}
@@ -959,12 +962,12 @@ export function ReservationWizard({
                                       placeholder={t('res.ownerSearch')}
                                       className="w-full h-10 rounded-xl bg-white border-2 border-slate-200 ps-10 pe-4 text-sm text-ink-primary outline-none focus:border-amber-400 transition-all"
                                     />
-                                  </div>
+                                  </div>}
                                   <GradientButton icon={<UserPlus size={16} />} onClick={() => setCreatingOwner(true)}>
                                     {t('res.newOwner')}
                                   </GradientButton>
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[200px] overflow-y-auto pr-1">
+                                {canSeeOwners && <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[200px] overflow-y-auto pr-1">
                                   {filteredOwners.map(o => (
                                     <button
                                       key={o.key}
@@ -981,7 +984,7 @@ export function ReservationWizard({
                                   {filteredOwners.length === 0 && (
                                     <p className="col-span-full text-center text-xs text-ink-muted py-4">{t('common.noResults')}</p>
                                   )}
-                                </div>
+                                </div>}
                               </>
                             )}
                           </div>
