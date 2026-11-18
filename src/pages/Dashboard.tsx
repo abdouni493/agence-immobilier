@@ -154,18 +154,33 @@ export default function Dashboard() {
 
       {/* Reservation alerts — today / overdue / imminent (activation & checkout) */}
       {totalResAlerts > 0 && (
-        <div className="mb-6 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-rose-50/40 p-4 shadow-sm">
-          <div className="mb-4 flex items-center gap-2.5">
-            <span className="relative grid h-9 w-9 place-items-center rounded-xl bg-amber-500 text-white shadow-sm">
-              <span className="absolute inset-0 rounded-xl bg-amber-500 opacity-40 animate-ping" />
-              <Bell size={17} className="relative" />
-            </span>
-            <div>
-              <p className="text-sm font-bold text-amber-700">{t('dash.resAlertsTitle')}</p>
-              <p className="text-[11px] text-amber-600">{t('resAlert.filterHint', { count: totalResAlerts })}</p>
+        <div className="mb-6 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_14px_40px_-20px_rgba(15,23,42,0.45)]">
+          <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-900 to-sky-800 px-5 py-4">
+            <div className="pointer-events-none absolute -end-10 -top-12 h-40 w-40 rounded-full bg-sky-400/20 blur-2xl" />
+            <div className="relative flex flex-wrap items-center gap-4">
+              <span className="relative grid h-11 w-11 place-items-center rounded-2xl bg-white/15 text-white ring-1 ring-white/25">
+                <span className="absolute inset-0 rounded-2xl bg-amber-400/30 animate-ping" />
+                <Bell size={20} className="relative" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-base font-extrabold text-white">{t('dash.resAlertsTitle')}</p>
+                <p className="text-xs text-sky-100/80">{t('resAlert.filterHint', { count: totalResAlerts })}</p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {ALERT_ORDER.filter((k) => resAlertGroups[k].length > 0).map((k) => {
+                  const Icon = ALERT_META[k].icon;
+                  return (
+                    <span key={k} className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white ring-1 ring-white/20">
+                      <span className={`grid h-4 w-4 place-items-center rounded-full ${alertTone(k).solid}`}><Icon size={10} /></span>
+                      {t(ALERT_META[k].titleKey)}
+                      <span className="rounded-full bg-white/20 px-1.5 text-[10px] font-bold">{resAlertGroups[k].length}</span>
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           </div>
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 bg-slate-50/60 p-4 lg:grid-cols-2">
             {ALERT_ORDER.map((type) => (
               <ReservationAlertGroup
                 key={type}
@@ -384,20 +399,19 @@ function AlertRow({
   sub: string;
   value: string;
 }) {
-  const toneClass =
-    tone === 'danger'
-      ? 'border-rose-400/30 bg-rose-500/10 text-rose-600'
-      : tone === 'warning'
-        ? 'border-amber-400/30 bg-amber-500/10 text-amber-600'
-        : 'border-sky-400/30 bg-sky-500/10 text-sky-600';
+  const c = tone === 'danger'
+    ? { bar: 'border-rose-500', tile: 'bg-gradient-to-br from-rose-500 to-pink-600 shadow-rose-500/30', pill: 'bg-rose-50 text-rose-700 ring-rose-200', sub: 'text-rose-600' }
+    : tone === 'warning'
+      ? { bar: 'border-amber-500', tile: 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-500/30', pill: 'bg-amber-50 text-amber-700 ring-amber-200', sub: 'text-amber-600' }
+      : { bar: 'border-sky-500', tile: 'bg-gradient-to-br from-sky-500 to-indigo-600 shadow-sky-500/30', pill: 'bg-sky-50 text-sky-700 ring-sky-200', sub: 'text-sky-600' };
   return (
-    <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 ${toneClass}`}>
-      <span className="shrink-0">{icon}</span>
+    <div className={`group flex items-center gap-3 rounded-2xl border border-slate-200 border-s-4 ${c.bar} bg-white px-3.5 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md`}>
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white shadow-md ${c.tile}`}>{icon}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-ink-primary truncate">{title}</p>
-        <p className="text-xs text-ink-secondary truncate">{sub}</p>
+        <p className="truncate text-sm font-bold text-slate-800">{title}</p>
+        <p className={`truncate text-[11px] font-semibold uppercase tracking-wide ${c.sub}`}>{sub}</p>
       </div>
-      <Badge tone={tone === 'danger' ? 'danger' : tone === 'warning' ? 'warning' : 'info'}>{value}</Badge>
+      <span className={`max-w-[45%] shrink-0 truncate rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${c.pill}`}>{value}</span>
     </div>
   );
 }
@@ -419,52 +433,56 @@ function ReservationAlertGroup({
   const urgent = type.endsWith('Today') || type.endsWith('Overdue');
 
   return (
-    <div className={`rounded-2xl border p-4 ${tone.banner}`}>
-      <div className={`flex items-center gap-2 mb-1 font-bold text-sm ${tone.title}`}>
-        <span className="relative grid h-7 w-7 place-items-center rounded-lg text-white shrink-0" >
-          <span className={`absolute inset-0 rounded-lg ${tone.solid}`} />
-          {urgent && <span className={`absolute inset-0 rounded-lg opacity-40 animate-ping ${tone.solid}`} />}
-          <Icon size={14} className="relative" />
+    <div className={`overflow-hidden rounded-2xl border-s-4 ${tone.accent} bg-white shadow-sm ring-1 ${tone.ring}`}>
+      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
+        <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white shadow-md">
+          <span className={`absolute inset-0 rounded-xl ${tone.solid}`} />
+          {urgent && <span className={`absolute inset-0 rounded-xl opacity-40 animate-ping ${tone.solid}`} />}
+          <Icon size={17} className="relative" />
         </span>
-        {t(meta.titleKey)}
-        <span className="ml-1 rounded-full bg-white/15 px-2 py-0.5 text-xs">{reservations.length}</span>
+        <div className="min-w-0 flex-1">
+          <p className={`text-sm font-extrabold ${tone.title}`}>{t(meta.titleKey)}</p>
+          <p className="truncate text-[11px] text-slate-500">
+            {t(type.startsWith('activate') ? 'resAlert.actionActivate' : 'resAlert.actionCheckout')}
+          </p>
+        </div>
+        <span className={`grid h-7 min-w-7 place-items-center rounded-full px-2 text-xs font-extrabold ${tone.soft}`}>{reservations.length}</span>
       </div>
-      <p className="mb-3 ml-9 text-[11px] text-slate-600">
-        {t(type.startsWith('activate') ? 'resAlert.actionActivate' : 'resAlert.actionCheckout')}
-      </p>
-      <motion.div variants={staggerContainer} initial="initial" animate="animate" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <motion.ul variants={staggerContainer} initial="initial" animate="animate" className="divide-y divide-slate-100">
         {reservations.map((r) => {
           const remaining = reservationRemaining(r);
           const client = clientById(data, r.clientId);
+          const name = `${client?.firstName ?? ''} ${client?.lastName ?? ''}`.trim();
+          const initials = name ? name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() : '?';
           return (
-            <motion.button
-              key={r.id}
-              variants={listItem}
-              onClick={() => onSelect(r)}
-              className="text-left rounded-xl border border-white/10 bg-white/5 p-3 transition-colors cursor-pointer hover:bg-white/10"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-ink-primary">{r.code}</span>
-                <ResStatusBadge status={r.status} />
-              </div>
-              <p className="text-sm font-medium text-ink-primary truncate">{client?.firstName} {client?.lastName}</p>
-              <div className="flex items-center gap-1 text-xs text-ink-secondary mt-0.5">
-                <Phone size={11} /> {client?.phone}
-              </div>
-              <div className="flex items-center gap-1 text-xs text-ink-secondary mt-0.5">
-                <Building2 size={11} /> {reservationRoomLabels(data, r)}
-              </div>
-              <div className="flex items-center gap-1 text-xs text-ink-muted mt-0.5">
-                <CalendarDays size={11} />
-                {formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)}
-              </div>
-              {remaining > 0 && (
-                <p className="text-xs font-semibold text-amber-600 mt-1">{t('common.remaining')}: {formatDA(remaining)}</p>
-              )}
-            </motion.button>
+            <motion.li key={r.id} variants={listItem}>
+              <button
+                onClick={() => onSelect(r)}
+                className="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-slate-50"
+              >
+                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-extrabold ${tone.soft}`}>{initials}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-bold text-slate-800">{name || '—'}</span>
+                    <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{r.code}</span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                    {client?.phone && <span className="inline-flex items-center gap-1"><Phone size={11} /> {client.phone}</span>}
+                    <span className="inline-flex items-center gap-1"><Building2 size={11} /> {reservationRoomLabels(data, r)}</span>
+                    <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> {formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <ResStatusBadge status={r.status} />
+                  {remaining > 0 && (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">{formatDA(remaining)}</span>
+                  )}
+                </div>
+              </button>
+            </motion.li>
           );
         })}
-      </motion.div>
+      </motion.ul>
     </div>
   );
 }

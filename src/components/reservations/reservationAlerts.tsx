@@ -91,6 +91,9 @@ interface ToneClasses {
   pillOn: string;   // active filter pill
   pillOff: string;  // idle filter pill
   glow: string;     // rgba used for the pulsing shadow
+  accent: string;   // strong border colour (start accent bar)
+  soft: string;     // soft chip (bg + text)
+  ring: string;     // light ring around a panel
 }
 
 const TONES: Record<string, ToneClasses> = {
@@ -101,6 +104,9 @@ const TONES: Record<string, ToneClasses> = {
     pillOn: 'bg-rose-500 text-white border-rose-500 shadow-sm',
     pillOff: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50',
     glow: 'rgba(244,63,94,0.45)',
+    accent: 'border-rose-500',
+    soft: 'bg-rose-50 text-rose-700',
+    ring: 'ring-rose-200',
   },
   orange: {
     banner: 'bg-orange-50 border-orange-200',
@@ -109,6 +115,9 @@ const TONES: Record<string, ToneClasses> = {
     pillOn: 'bg-orange-500 text-white border-orange-500 shadow-sm',
     pillOff: 'bg-white text-orange-700 border-orange-200 hover:bg-orange-50',
     glow: 'rgba(249,115,22,0.45)',
+    accent: 'border-orange-500',
+    soft: 'bg-orange-50 text-orange-700',
+    ring: 'ring-orange-200',
   },
   amber: {
     banner: 'bg-amber-50 border-amber-200',
@@ -117,6 +126,9 @@ const TONES: Record<string, ToneClasses> = {
     pillOn: 'bg-amber-500 text-white border-amber-500 shadow-sm',
     pillOff: 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50',
     glow: 'rgba(245,158,11,0.45)',
+    accent: 'border-amber-500',
+    soft: 'bg-amber-50 text-amber-700',
+    ring: 'ring-amber-200',
   },
   teal: {
     banner: 'bg-teal-50 border-teal-200',
@@ -125,6 +137,9 @@ const TONES: Record<string, ToneClasses> = {
     pillOn: 'bg-teal-500 text-white border-teal-500 shadow-sm',
     pillOff: 'bg-white text-teal-700 border-teal-200 hover:bg-teal-50',
     glow: 'rgba(20,184,166,0.45)',
+    accent: 'border-teal-500',
+    soft: 'bg-teal-50 text-teal-700',
+    ring: 'ring-teal-200',
   },
   sky: {
     banner: 'bg-sky-50 border-sky-200',
@@ -133,6 +148,9 @@ const TONES: Record<string, ToneClasses> = {
     pillOn: 'bg-sky-500 text-white border-sky-500 shadow-sm',
     pillOff: 'bg-white text-sky-700 border-sky-200 hover:bg-sky-50',
     glow: 'rgba(14,165,233,0.4)',
+    accent: 'border-sky-500',
+    soft: 'bg-sky-50 text-sky-700',
+    ring: 'ring-sky-200',
   },
   violet: {
     banner: 'bg-violet-50 border-violet-200',
@@ -141,6 +159,9 @@ const TONES: Record<string, ToneClasses> = {
     pillOn: 'bg-violet-500 text-white border-violet-500 shadow-sm',
     pillOff: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50',
     glow: 'rgba(139,92,246,0.4)',
+    accent: 'border-violet-500',
+    soft: 'bg-violet-50 text-violet-700',
+    ring: 'ring-violet-200',
   },
 };
 
