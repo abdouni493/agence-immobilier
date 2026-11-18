@@ -211,142 +211,135 @@ export default function Chambres() {
           <AnimatePresence>
             {filtered.map(({ room, status }) => (
               <motion.div key={room.id} variants={listItem} layout exit="exit">
-                <div className="apt-card group relative flex h-full flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_10px_30px_-14px_rgba(15,23,42,0.35)] transition-all duration-300 hover:-translate-y-1 hover:border-sky-200 hover:shadow-[0_22px_48px_-18px_rgba(2,132,199,0.5)]">
-                  {/* Cover: first photo (or a branded placeholder) with the key facts over it */}
-                  <div className="relative h-44 overflow-hidden">
+                <div className="apt-card group relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 shadow-[0_18px_40px_-22px_rgba(0,0,0,0.9)] transition-all duration-300 hover:-translate-y-1 hover:border-sky-400/50 hover:shadow-[0_24px_50px_-20px_rgba(56,189,248,0.35)]"
+                  style={{ background: 'linear-gradient(180deg, #1d222b 0%, #171b22 100%)' }}>
+                  {/* ── Cover ── */}
+                  <div className="relative h-48 overflow-hidden">
                     {see('photos') && room.photos?.[0] ? (
-                      <img
-                        src={room.photos[0]}
-                        alt=""
-                        loading="lazy"
-                        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                      />
+                      <img src={room.photos[0]} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
                     ) : (
-                      <div className="relative h-full w-full bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-700">
+                      <div className="relative h-full w-full" style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 55%, #4338ca 100%)' }}>
                         <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '18px 18px' }} />
-                        <Building2 size={64} className="absolute end-5 top-5 text-white/25" strokeWidth={1.4} />
+                        <Building2 size={72} className="absolute end-6 top-6 text-white/30" strokeWidth={1.3} />
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-900/20 to-transparent" />
+                    {/* Dark fade so the title is always readable, whatever the photo */}
+                    <div className="absolute inset-x-0 bottom-0 h-28" style={{ background: 'linear-gradient(to top, rgba(10,12,16,0.95) 0%, rgba(10,12,16,0.6) 55%, transparent 100%)' }} />
 
                     <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
-                      <span className={cn(
-                        'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide shadow-sm backdrop-blur',
-                        (room.propertyType ?? 'rental') === 'sale' ? 'bg-amber-400/95 text-amber-950' : 'bg-white/90 text-sky-800',
-                      )}>
-                        {(room.propertyType ?? 'rental') === 'sale' ? <Tags size={11} /> : <BedDouble size={11} />}
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold text-white shadow-lg"
+                        style={{ background: (room.propertyType ?? 'rental') === 'sale' ? '#d97706' : '#0284c7' }}
+                      >
+                        {(room.propertyType ?? 'rental') === 'sale' ? <Tags size={13} /> : <BedDouble size={13} />}
                         {(room.propertyType ?? 'rental') === 'sale' ? t('apt.typeSale') : t('apt.typeRental')}
                       </span>
                       {see('status') && (
-                        <span className={cn(
-                          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold shadow-sm',
-                          status === 'available' ? 'bg-emerald-500 text-white' : status === 'occupied' ? 'bg-rose-500 text-white' : 'bg-amber-500 text-white',
-                        )}>
-                          <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold text-white shadow-lg"
+                          style={{ background: status === 'available' ? '#059669' : status === 'occupied' ? '#e11d48' : '#d97706' }}
+                        >
+                          <span className="h-2 w-2 rounded-full bg-white" />
                           {roomStatusLabel(status, t)}
                         </span>
                       )}
                     </div>
 
-                    {see('photos') && (room.photos?.length ?? 0) > 1 && (
-                      <span className="absolute end-3 top-12 inline-flex items-center gap-1 rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
-                        <ImageIcon size={11} /> {room.photos!.length}
-                      </span>
-                    )}
-
-                    <div className="absolute inset-x-4 bottom-3 flex items-end justify-between gap-3">
+                    <div className="absolute inset-x-4 bottom-3 flex items-end justify-between gap-2">
                       <div className="min-w-0">
-                        <h3 className="truncate text-lg font-extrabold text-white drop-shadow">{room.name}</h3>
+                        <h3 className="truncate text-xl font-extrabold leading-tight text-white" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.6)' }}>{room.name}</h3>
                         {see('location') && room.commune && (
-                          <p className="mt-0.5 flex items-center gap-1 truncate text-xs font-medium text-sky-100">
-                            <MapPin size={12} className="shrink-0" /> {room.commune}
+                          <p className="mt-1 flex items-center gap-1.5 truncate text-sm font-medium text-white/90">
+                            <MapPin size={14} className="shrink-0 text-sky-300" /> {room.commune}
                           </p>
                         )}
                       </div>
-                      {see('price') && ((room.propertyType ?? 'rental') === 'sale' ? (
-                        room.salePrice ? (
-                          <span className="shrink-0 rounded-xl bg-white px-2.5 py-1.5 text-sm font-extrabold text-slate-900 shadow-lg">{formatDA(room.salePrice)}</span>
-                        ) : null
-                      ) : (
-                        <span className="shrink-0 rounded-xl bg-white px-2.5 py-1.5 text-end shadow-lg">
-                          <span className="block text-sm font-extrabold leading-tight text-slate-900">{formatDA(room.pricePerNight)}</span>
-                          <span className="block text-[10px] font-semibold leading-tight text-sky-600">/ {rentalPeriodOf(room) === 'month' ? t('common.monthUnit') : t('common.night')}</span>
+                      {see('photos') && (room.photos?.length ?? 0) > 1 && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white">
+                          <ImageIcon size={13} /> {room.photos!.length}
                         </span>
-                      ))}
+                      )}
                     </div>
                   </div>
 
-                  {/* Body */}
-                  <div className="flex flex-1 flex-col gap-3 p-4">
-                    <div className="flex flex-wrap gap-1.5">
-                      {see('rooms') && (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700 ring-1 ring-sky-100">
-                          <Home size={12} /> {room.capacity} {t('apt.roomsNumber').toLowerCase()}
+                  {/* ── Body ── */}
+                  <div className="flex flex-1 flex-col gap-3.5 p-4">
+                    {/* Price, big and clear */}
+                    {see('price') && ((room.propertyType ?? 'rental') === 'sale' ? !!room.salePrice : true) && (
+                      <div className="flex items-center justify-between gap-3 rounded-2xl px-4 py-3" style={{ background: 'rgba(56,189,248,0.10)', border: '1px solid rgba(56,189,248,0.28)' }}>
+                        <span className="text-sm font-semibold text-sky-300">
+                          {(room.propertyType ?? 'rental') === 'sale'
+                            ? t('apt.salePrice').replace(/\s*\(.*\)\s*$/, '')
+                            : rentalPeriodOf(room) === 'month' ? t('rooms.pricePerMonth') : t('rooms.pricePerNight')}
                         </span>
-                      )}
-                      {see('floorCategory') && floorName(data, room.floorId) !== '—' && (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-700 ring-1 ring-indigo-100">
-                          <Layers size={12} /> {floorName(data, room.floorId)}
+                        <span className="text-xl font-extrabold tracking-tight text-white">
+                          {formatDA((room.propertyType ?? 'rental') === 'sale' ? room.salePrice ?? 0 : room.pricePerNight)}
                         </span>
-                      )}
-                      {see('floorCategory') && categoryName(data, room.categoryId) !== '—' && (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200">
-                          <Tag size={12} /> {categoryName(data, room.categoryId)}
-                        </span>
-                      )}
-                      {(room.propertyType ?? 'rental') === 'rental' && see('price') && (
-                        <span className={cn(
-                          'inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold ring-1',
-                          rentalPeriodOf(room) === 'month' ? 'bg-violet-50 text-violet-700 ring-violet-100' : 'bg-cyan-50 text-cyan-700 ring-cyan-100',
-                        )}>
-                          {rentalPeriodOf(room) === 'month' ? <CalendarRange size={12} /> : <CalendarDays size={12} />}
-                          {rentalPeriodOf(room) === 'month' ? t('apt.periodMonth') : t('apt.periodDay')}
-                        </span>
-                      )}
-                      {see('furniture') && (
-                        <span className={cn(
-                          'inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold ring-1',
-                          room.furnished ? 'bg-emerald-50 text-emerald-700 ring-emerald-100' : 'bg-slate-50 text-slate-500 ring-slate-200',
-                        )}>
-                          <Sofa size={12} /> {room.furnished ? t('apt.furnished') : t('apt.unfurnished')}
-                        </span>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
-                    {((see('owner') && (room.ownerName || room.ownerClientId)) || (see('mediator') && room.mediatorId)) && (
-                      <div className="space-y-1.5 rounded-2xl bg-slate-50 p-2.5 ring-1 ring-slate-100">
-                        {see('owner') && (room.ownerName || room.ownerClientId) && (
-                          <p className="flex items-center gap-2 text-xs text-slate-600">
-                            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-sky-100 text-sky-700"><Users size={12} /></span>
-                            <span className="min-w-0 truncate">
-                              <span className="font-semibold text-slate-800">{room.ownerName || clientName(data, room.ownerClientId!)}</span>
-                              {room.ownerPhone ? <span className="text-slate-500"> · {room.ownerPhone}</span> : ''}
-                            </span>
-                          </p>
-                        )}
-                        {see('mediator') && room.mediatorId && (
-                          <p className="flex items-center gap-2 text-xs text-slate-600">
-                            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-700"><Handshake size={12} /></span>
-                            <span className="truncate font-semibold text-slate-800">{mediatorName(data, room.mediatorId)}</span>
-                          </p>
-                        )}
+                    {/* Key facts as labelled tiles */}
+                    {(() => {
+                      const tiles: { icon: React.ReactNode; label: string; value: string; color: string }[] = [];
+                      if (see('rooms')) tiles.push({ icon: <Home size={16} />, label: t('apt.roomsNumber'), value: String(room.capacity), color: '#38bdf8' });
+                      if (see('floorCategory') && floorName(data, room.floorId) !== '—') tiles.push({ icon: <Layers size={16} />, label: t('apt.etage'), value: floorName(data, room.floorId), color: '#a78bfa' });
+                      if (see('floorCategory') && categoryName(data, room.categoryId) !== '—') tiles.push({ icon: <Tag size={16} />, label: t('common.category'), value: categoryName(data, room.categoryId), color: '#f472b6' });
+                      if (see('furniture')) tiles.push({ icon: <Sofa size={16} />, label: t('apt.furnishing'), value: room.furnished ? t('apt.furnished') : t('apt.unfurnished'), color: '#34d399' });
+                      if ((room.propertyType ?? 'rental') === 'rental' && see('price')) tiles.push({ icon: rentalPeriodOf(room) === 'month' ? <CalendarRange size={16} /> : <CalendarDays size={16} />, label: t('apt.rentalPeriod'), value: rentalPeriodOf(room) === 'month' ? t('apt.periodMonth') : t('apt.periodDay'), color: '#fbbf24' });
+                      if (tiles.length === 0) return null;
+                      return (
+                        <div className="grid grid-cols-2 gap-2">
+                          {tiles.map((tile) => (
+                            <div key={tile.label} className="flex items-center gap-2.5 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg" style={{ background: `${tile.color}22`, color: tile.color }}>{tile.icon}</span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-xs font-medium text-ink-secondary">{tile.label}</span>
+                                <span className="block truncate text-sm font-bold text-white">{tile.value}</span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Owner & mediator */}
+                    {see('owner') && (room.ownerName || room.ownerClientId) && (
+                      <div className="flex items-center gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}><Users size={16} /></span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-medium text-ink-secondary">{t('apt.owner')}</span>
+                          <span className="block truncate text-sm font-bold text-white">
+                            {room.ownerName || clientName(data, room.ownerClientId!)}
+                            {room.ownerPhone && <span className="font-medium text-ink-secondary"> · <bdi dir="ltr">{room.ownerPhone}</bdi></span>}
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                    {see('mediator') && room.mediatorId && (
+                      <div className="flex items-center gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}><Handshake size={16} /></span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-medium text-ink-secondary">{t('apt.mediator')}</span>
+                          <span className="block truncate text-sm font-bold text-white">{mediatorName(data, room.mediatorId)}</span>
+                        </span>
                       </div>
                     )}
 
                     {see('status') && status === 'maintenance' && room.maintenanceNote && (
-                      <p className="flex items-start gap-1.5 rounded-xl bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 ring-1 ring-amber-200">
-                        <Wrench size={13} className="mt-0.5 shrink-0" /> {room.maintenanceNote}
+                      <p className="flex items-start gap-2 rounded-xl px-3 py-2 text-sm font-medium text-amber-300" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)' }}>
+                        <Wrench size={15} className="mt-0.5 shrink-0" /> {room.maintenanceNote}
                       </p>
                     )}
                   </div>
 
-                  {/* Actions */}
-                  <div className="mt-auto flex items-center gap-1.5 border-t border-slate-100 bg-slate-50/80 px-4 py-3">
+                  {/* ── Actions ── */}
+                  <div className="mt-auto flex items-center gap-1.5 px-4 py-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.18)' }}>
                     <button
                       onClick={() => setDetailRoom(room)}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-3.5 text-xs font-bold text-white shadow-md shadow-sky-500/25 transition-all hover:shadow-lg hover:shadow-sky-500/40 active:scale-95"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-sm font-bold text-white shadow-lg transition-all hover:brightness-110 active:scale-95"
+                      style={{ background: 'linear-gradient(90deg, #0ea5e9, #2563eb)' }}
                     >
-                      <Eye size={15} /> {t('common.details')}
+                      <Eye size={16} /> {t('common.details')}
                     </button>
                     <div className="flex-1" />
                     {hasOwner(room) && see('owner') && (
