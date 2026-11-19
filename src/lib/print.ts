@@ -191,7 +191,7 @@ export const PRINT_STYLES = `
   .sign-grid.even .sign-space { height: 74px; }
   .sign-grid.even .line { margin-top: 0; color: #0f172a; font-weight: 700; font-size: 10.5px; }
   .doc.compact .sign-grid.even .sign-space { height: 62px; }
-  .vs-totals { width: auto; margin: 0; }
+  .vs-totals { width: auto !important; margin: 0 !important; }
   .doc.compact.vs-doc .clauses li { margin-bottom: 1px; }
 
   /* Header variant: agency info on one side, name centred, the logo in a
@@ -234,6 +234,19 @@ export const PRINT_STYLES = `
   .doc.compact .sign-box .line { margin-top: 26px; }
   .doc.compact .cachet-circle { width: 118px; height: 118px; }
   .doc.compact .foot { margin-top: 10px; padding-top: 6px; }
+
+  /* ── Full-page layout (contract, versement, key handover, refund) ──
+     The frame fills the whole A4 sheet: the content blocks are spread over
+     the height and the signature / stamp row sits at the very bottom, so no
+     empty band is left under it. */
+  .doc.fill-page { display: flex; flex-direction: column; min-height: 1030px; }
+  .doc.fill-page > .doc-body { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+  .doc.fill-page > .doc-body > * { margin-bottom: 0 !important; }
+  .doc.fill-page > .doc-body > * + * { margin-top: 8px; }
+  .doc.fill-page > .doc-end { margin-top: 10px; }
+  .doc.fill-page .sign-grid { margin-top: 0; }
+  .doc.fill-page .sign-grid.even .sign-space { height: 78px; }
+  .doc.fill-page .tbl-block table { margin-bottom: 0; }
 
   /* Keep framed parts from being split across two pages. */
   .section, .party, .fee-box, .totals-wrap, .amount-hero, .sign-grid, table { page-break-inside: avoid; }
@@ -633,9 +646,9 @@ function ownerParty(data: AppData, roomId: string | undefined): string {
 }
 
 /** Agency fee box (+ the employee share when one was set on the location). */
-function agencyFeeBox(data: AppData, r: Reservation): string {
+function agencyFeeBox(data: AppData, r: Reservation, always = false): string {
   const fee = r.agencyFee ?? 0;
-  if (fee <= 0) return '';
+  if (fee <= 0 && !always) return '';
   const commission = r.agencyFeeCommission ?? 0;
   const worker = r.agencyFeeWorkerId
     ? data.workers.find((w) => w.id === r.agencyFeeWorkerId)
@@ -1135,9 +1148,10 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
   }).join('');
 
   return `
-  <div class="doc compact">
+  <div class="doc compact fill-page">
     ${docHeader(store, r.code, `${tr('Établi le', 'حرر في')} ${formatDate(r.createdAt)}`, tr('Contrat de Location', 'عقد كراء'), { sideLogo: true })}
 
+    <div class="doc-body">
     <!-- Parties: the agency (mandataire), the owner of the apartment, the tenant -->
     <div class="parties" style="grid-template-columns:1fr 1fr 1fr">
       <div class="party">
@@ -1160,11 +1174,13 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
       </div>
     </div>
 
+    <div class="tbl-block">
     <p class="tbl-head">🏠 ${tr('Bien(s) loué(s)', 'العقارات المؤجرة')}</p>
     <table>
       <thead><tr><th>${tr('Appartement', 'الشقة')}</th><th>${tr('Localisation', 'الموقع')}</th><th>${tr('Étage', 'الطابق')}</th><th class="right">${unitPriceHeader(data, r)}</th><th class="right">${tr('Durée', 'المدة')}</th><th class="right">${tr('Sous-total', 'المجموع الجزئي')}</th></tr></thead>
       <tbody>${roomRows}</tbody>
     </table>
+    </div>
 
     <div class="grid2">
       <div class="section green">
@@ -1176,22 +1192,25 @@ export function buildRentalContractHTML(data: AppData, r: Reservation, store: St
       <div class="section blue">
         <h3>💰 ${tr('Conditions financières', 'الشروط المالية')}</h3>
         <p><strong>${tr('Loyer :', 'الإيجار :')}</strong> ${formatDA(rentTotal)}</p>
-        ${fee > 0 ? `<p><strong>${tr("Frais d'agence :", 'أتعاب الوكالة :')}</strong> <span class="badge-fee">${formatDA(fee)}</span></p>` : ''}
+        <p><strong>${tr("Frais d'agence :", 'أتعاب الوكالة :')}</strong> <span class="badge-fee">${formatDA(fee)}</span></p>
         <p><strong>${tr('Total à payer :', 'المبلغ الواجب دفعه :')}</strong> ${formatDA(r.total)}</p>
         <p><strong>${tr('Déjà versé :', 'المدفوع :')}</strong> ${formatDA(paid)}</p>
         <p><strong>${tr('Reste dû :', 'الباقي :')}</strong> <span class="${remaining > 0 ? 'badge-debt' : 'badge-paid'}">${formatDA(remaining)}</span></p>
       </div>
     </div>
 
-    ${agencyFeeBox(data, r)}
+    ${agencyFeeBox(data, r, true)}
 
     ${rentalClauses(data, r)}
 
-    ${paymentsTable(r.payments)}
+    ${r.payments.length ? `<div class="tbl-block">${paymentsTable(r.payments)}</div>` : ''}
+    </div>
 
+    <div class="doc-end">
     ${ownerSignGrid(client ? `${client.firstName} ${client.lastName}` : '', ownerData(data, mainRoomId).name)}
 
     <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
+    </div>
   </div>`;
 }
 
@@ -1216,9 +1235,10 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
   // Laid out to fit on one A4 sheet: amount, the two parties, the rental and
   // its totals side by side, the payments, the conditions, the signatures.
   return `
-  <div class="doc compact vs-doc">
+  <div class="doc compact vs-doc fill-page">
     ${docHeader(store, r.code, `${tr('Établi le', 'حرر في')} ${formatDate(issueDate)}`, tr('Bon de Versement', 'وصل دفع'), { sideLogo: true })}
 
+    <div class="doc-body">
     <div class="amount-hero">
       <div class="lbl">${tr('Montant total versé', 'المبلغ الإجمالي المدفوع')}</div>
       <div class="val">${formatDA(paid)}</div>
@@ -1247,15 +1267,19 @@ export function buildVersementHTML(data: AppData, r: Reservation, store: StoreIn
       </div>
     </div>
 
-    ${paymentsTable(r.payments)}
+    ${r.payments.length ? `<div class="tbl-block">${paymentsTable(r.payments)}</div>` : ''}
 
     ${rentalClauses(data, r, [
       tr("L'acompte (arrhes) n'est pas remboursable si le délai convenu de 48 heures est dépassé.", 'العربون لا يسترد إذا تجاوزت المدة المتفق عليها 48 ساعة.'),
     ])}
 
+    </div>
+
+    <div class="doc-end">
     ${ownerSignGrid(clientName, ownerData(data, mainRoomId).name)}
 
     <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
+    </div>
   </div>`;
 }
 
@@ -1286,9 +1310,10 @@ export function buildKeyHandoverHTML(data: AppData, room: Room, store: StoreInfo
   ];
 
   return `
-  <div class="doc compact">
+  <div class="doc compact fill-page">
     ${docHeader(store, code, `${tr('Établi le', 'حرر في')} ${formatDate(today)}`, title, { sideLogo: true })}
 
+    <div class="doc-body">
     <div class="doc-title-band">
       <h2>${title}</h2>
       <div class="sub">${tr('Remise des clés par le propriétaire à l\'agence', 'تسليم المفاتيح من طرف المالك إلى الوكالة')}</div>
@@ -1332,12 +1357,16 @@ export function buildKeyHandoverHTML(data: AppData, room: Room, store: StoreInfo
       ${fill(tr('Le :', 'التاريخ :'), numDate(today), true)}
     </div>
 
+    </div>
+
+    <div class="doc-end">
     <div class="sign-grid even two">
       <div class="sign-box"><p class="who">${tr('Signature et cachet du propriétaire', 'توقيع وختم المالك')}</p><div class="sign-space"></div><div class="line">${o.name || '&nbsp;'}</div></div>
       <div class="sign-box"><p class="who">${tr("Cachet et signature de l'agence", 'ختم وتوقيع الوكالة')}</p><div class="sign-space"></div><div class="line">${store.name}</div></div>
     </div>
 
     <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
+    </div>
   </div>`;
 }
 
@@ -1372,9 +1401,10 @@ export function buildRefundHTML(data: AppData, r: Reservation, store: StoreInfo)
   ];
 
   return `
-  <div class="doc compact">
+  <div class="doc compact fill-page">
     ${docHeader(store, r.code, `${tr('Établi le', 'حرر في')} ${formatDate(date)}`, title, { sideLogo: true })}
 
+    <div class="doc-body">
     <div class="doc-title-band">
       <h2>${title}</h2>
       <div class="sub">${tr('Restitution au client de la somme versée', 'إرجاع المبلغ المدفوع إلى الزبون')}</div>
@@ -1436,12 +1466,16 @@ export function buildRefundHTML(data: AppData, r: Reservation, store: StoreInfo)
       ${fill(tr('Le :', 'التاريخ :'), numDate(date), true)}
     </div>
 
+    </div>
+
+    <div class="doc-end">
     <div class="sign-grid even two">
       <div class="sign-box"><p class="who">${tr('Signature du client', 'توقيع الزبون')}</p><div class="sign-space"></div><div class="line">${clientName || '&nbsp;'}</div></div>
       <div class="sign-box"><p class="who">${tr("Cachet et signature de l'agence", 'ختم وتوقيع الوكالة')}</p><div class="sign-space"></div><div class="line">${store.name}</div></div>
     </div>
 
     <div class="foot">${tr('Document généré par', 'وثيقة صادرة عن')} ${store.name}${store.phone ? ` — <span class="tel">${store.phone}</span>` : ''} — ${tr('Merci de votre confiance.', 'شكرا على ثقتكم.')}</div>
+    </div>
   </div>`;
 }
 
